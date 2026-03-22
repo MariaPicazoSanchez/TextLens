@@ -1,5 +1,10 @@
 # TextLens
 
+![CI](https://github.com/MariaPicazoSanchez/TextLens/actions/workflows/ci.yml/badge.svg)
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![React](https://img.shields.io/badge/react-19-61dafb)
+
 ## Overview
 
 TextLens is a full-stack web application that leverages the **Groq API** (Llama 3.1 / 3.3) to perform a wide range of AI-driven text operations through a clean, responsive dark-theme interface. Responses stream token-by-token in real time. The UI is fully localized in **16 languages**.
