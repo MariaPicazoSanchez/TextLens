@@ -3,7 +3,8 @@ import { analyzeText, translateText } from "./services/api";
 import "./App.css";
 
 const MIN_CHARS = 15;
-const MAX_CHARS = 500;
+const MAX_CHARS = 3000;
+const MAX_TRANSLATE_CHARS = 500;
 
 const TONES = ["formal", "casual", "positive", "negative", "persuasive", "simple"];
 
@@ -68,6 +69,7 @@ function App() {
   const [error, setError] = useState(null); // { message, type: 'error' | 'warning' }
   const [selectedTone, setSelectedTone] = useState("formal");
   const [selectedLang, setSelectedLang] = useState("en");
+  const [responseLang, setResponseLang] = useState("English");
 
   const showError = (message, type = "error") => setError({ message, type });
   const clearError = () => setError(null);
@@ -77,7 +79,7 @@ function App() {
     if (err) { showError(err, "warning"); return; }
     clearError(); setResult(null); setActiveType(type); setLoading(true);
     try {
-      const data = await analyzeText(text, type, extra);
+      const data = await analyzeText(text, type, { ...extra, response_lang: responseLang });
       setResult({ type, data });
     } catch (e) {
       showError(e.message);
@@ -89,6 +91,10 @@ function App() {
   const handleTranslate = async () => {
     const err = validateForSubmit(text, false); // translation allows short text
     if (err) { showError(err, "warning"); return; }
+    if (text.length > MAX_TRANSLATE_CHARS) {
+      showError(`Translation is limited to ${MAX_TRANSLATE_CHARS} characters. Your text has ${text.length}.`, "warning");
+      return;
+    }
     clearError(); setResult(null); setActiveType("translate"); setLoading(true);
     try {
       const data = await translateText(text, selectedLang);
@@ -209,6 +215,20 @@ function App() {
 
         {/* ── Right: controls ── */}
         <div className="right-panel">
+
+          <div className="panel-section">
+            <p className="section-label">Response language</p>
+            <select
+              className="lang-select"
+              value={responseLang}
+              onChange={(e) => setResponseLang(e.target.value)}
+              disabled={loading}
+            >
+              {LANGUAGES.map(({ label }) => (
+                <option key={label} value={label}>{label}</option>
+              ))}
+            </select>
+          </div>
 
           <div className="panel-section">
             <p className="section-label">Analyze</p>
