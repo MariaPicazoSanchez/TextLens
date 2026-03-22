@@ -8,7 +8,7 @@ on:
 
 jobs:
   backend:
-    name: Backend — import & dependency check
+    name: Backend - import & dependency check
     runs-on: ubuntu-latest
 
     steps:
@@ -33,7 +33,7 @@ jobs:
         run: python -c "import main; print('Backend OK — all routes loaded')"
 
   frontend:
-    name: Frontend — install & build
+    name: Frontend - install & build
     runs-on: ubuntu-latest
 
     steps:
