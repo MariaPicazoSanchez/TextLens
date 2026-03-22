@@ -68,10 +68,13 @@ body {
   display: flex;
   flex-direction: column;
   padding: 24px 20px 24px 28px;
-  gap: 16px;
+  gap: 12px;
   border-right: 1px solid #1e2433;
   min-height: 0;
+  overflow: hidden;
 }
+
+.input-section { flex-shrink: 0; }
 
 .section-label {
   font-size: 10px;
@@ -83,8 +86,8 @@ body {
 }
 
 .textarea {
-  flex: 1;
   width: 100%;
+  height: 180px;
   background: #0d0f18;
   border: 1px solid #1e2433;
   border-radius: 10px;
@@ -95,7 +98,6 @@ body {
   resize: none;
   transition: border-color 0.2s;
   font-family: inherit;
-  min-height: 0;
 }
 
 .textarea::placeholder { color: #2d3748; }
@@ -264,6 +266,135 @@ body {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   margin-bottom: 8px;
+}
+
+/* ── History section ── */
+.history-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.clear-btn {
+  font-size: 11px;
+  color: #4b5563;
+  background: none;
+  border: 1px solid #1e2433;
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.clear-btn:hover { color: #f87171; border-color: rgba(239,68,68,0.3); }
+
+.history-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 4px;
+}
+
+.history-list::-webkit-scrollbar { width: 4px; }
+.history-list::-webkit-scrollbar-track { background: transparent; }
+.history-list::-webkit-scrollbar-thumb { background: #1e2433; border-radius: 2px; }
+
+.history-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #2d3748;
+  text-align: center;
+  padding: 40px 0;
+}
+
+.history-empty-icon {
+  font-size: 28px;
+  opacity: 0.3;
+  margin-bottom: 4px;
+}
+
+.history-empty p { font-size: 13px; line-height: 1.5; }
+.history-empty p:first-of-type { color: #374151; font-weight: 500; }
+
+/* ── History card ── */
+.history-card {
+  background: #161b27;
+  border: 1px solid #1e2433;
+  border-radius: 12px;
+  overflow: hidden;
+  animation: slideIn 0.2s ease;
+  flex-shrink: 0;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.history-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  background: #0d0f18;
+  border-bottom: 1px solid #1e2433;
+}
+
+.history-type-icon { font-size: 13px; }
+
+.history-time {
+  font-size: 11px;
+  color: #374151;
+  margin-left: auto;
+}
+
+.history-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: 6px;
+}
+
+.icon-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid #1e2433;
+  background: transparent;
+  color: #4b5563;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.icon-btn:hover { background: #1e2433; color: #e2e8f0; }
+.icon-btn-remove:hover { border-color: rgba(239,68,68,0.3); color: #f87171; background: rgba(239,68,68,0.06); }
+
+.history-card-body { padding: 14px; }
+
+.history-loading {
+  border-style: dashed;
+  border-color: #6366f1;
 }
 
 /* ── Right panel ── */

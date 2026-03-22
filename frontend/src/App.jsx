@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { analyzeText, translateText } from "./services/api";
 import "./App.css";
 
@@ -44,45 +44,167 @@ const TYPE_LABELS = {
   qa:            "Q&A",
 };
 
-// Returns { message, type: 'warning' | null } for inline textarea hint
-function getTextHint(text, requireMin = true) {
+const TYPE_ICONS = {
+  summary_short: "⚡",
+  summary_long:  "📄",
+  keywords:      "🏷️",
+  sentiment:     "💡",
+  tone:          "✏️",
+  translate:     "🌐",
+  qa:            "❓",
+};
+
+function getTextHint(text) {
   const len = text.trim().length;
   if (text.length === 0) return null;
-  if (requireMin && len < MIN_CHARS) return { message: `${MIN_CHARS - len} more characters needed (minimum ${MIN_CHARS})`, type: "warning" };
-  if (text.length >= MAX_CHARS)      return { message: `Character limit reached (${MAX_CHARS})`, type: "error" };
+  if (len < MIN_CHARS) return { message: `${MIN_CHARS - len} more characters needed`, type: "warning" };
+  if (text.length >= MAX_CHARS) return { message: `Character limit reached (${MAX_CHARS})`, type: "error" };
   return null;
 }
 
-// Returns an error string before making an API call, or null if OK
 function validateForSubmit(text, requireMin = true) {
   const trimmed = text.trim();
-  if (!trimmed)                              return "The text cannot be empty.";
-  if (requireMin && trimmed.length < MIN_CHARS) return `Text is too short (${trimmed.length}/${MIN_CHARS} characters). Add a bit more content.`;
-  if (text.length > MAX_CHARS)               return `Text exceeds the ${MAX_CHARS} character limit.`;
+  if (!trimmed) return "The text cannot be empty.";
+  if (requireMin && trimmed.length < MIN_CHARS)
+    return `Text is too short (${trimmed.length}/${MIN_CHARS} characters). Add a bit more content.`;
+  if (text.length > MAX_CHARS) return `Text exceeds the ${MAX_CHARS} character limit.`;
   return null;
 }
 
-function App() {
+function formatTime(date) {
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function copyText(str) {
+  navigator.clipboard.writeText(str).catch(() => {});
+}
+
+function getPlainText(item) {
+  const { type, data } = item;
+  if (type === "keywords") return data.keywords.join(", ");
+  if (type === "sentiment") return `${data.sentiment.label} (${Math.round((data.sentiment.score || 0) * 100)}%)\n${data.sentiment.explanation}`;
+  if (type === "qa") return `Q: ${item.question}\nA: ${data.answer}`;
+  if (type === "translate") return data.translation;
+  return data.summary ?? data.rewritten ?? "";
+}
+
+// ── Result body renderer (shared between history items) ──
+function ResultBody({ item }) {
+  const { type, data } = item;
+
+  if (type === "summary_short" || type === "summary_long" || type === "tone") {
+    return <p className="result-text">{data.summary ?? data.rewritten}</p>;
+  }
+  if (type === "translate") {
+    return (
+      <>
+        <p className="result-lang-note">Translated to {item.toLang}</p>
+        <p className="result-text">{data.translation}</p>
+      </>
+    );
+  }
+  if (type === "keywords") {
+    return (
+      <div className="keywords-wrap">
+        {data.keywords.map((kw, i) => <span key={i} className="keyword-tag">{kw}</span>)}
+      </div>
+    );
+  }
+  if (type === "qa") {
+    return (
+      <div className="qa-wrap">
+        <p className="qa-question">❓ {item.question}</p>
+        <p className="result-text">{data.answer}</p>
+      </div>
+    );
+  }
+  if (type === "sentiment") {
+    const s = data.sentiment;
+    const pct = Math.round((s.score || 0) * 100);
+    return (
+      <div className="sentiment-wrap">
+        <div className="sentiment-top">
+          <span className={`sentiment-badge ${s.label}`}>{s.label}</span>
+          <span className="sentiment-score">Confidence: <span>{pct}%</span></span>
+        </div>
+        <div className="confidence-bar-bg">
+          <div className="confidence-bar-fill" style={{ width: `${pct}%` }} />
+        </div>
+        <p className="sentiment-explanation">{s.explanation}</p>
+      </div>
+    );
+  }
+  return null;
+}
+
+// ── Single history card ──
+function HistoryCard({ item, onRemove }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    copyText(getPlainText(item));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div className="history-card">
+      <div className="history-card-header">
+        <span className="history-type-icon">{TYPE_ICONS[item.type]}</span>
+        <span className="result-type-badge">{TYPE_LABELS[item.type]}</span>
+        <span className="history-time">{formatTime(item.timestamp)}</span>
+        <div className="history-actions">
+          <button className="icon-btn" title="Copy" onClick={handleCopy}>
+            {copied ? "✓" : "⧉"}
+          </button>
+          <button className="icon-btn icon-btn-remove" title="Remove" onClick={() => onRemove(item.id)}>
+            ✕
+          </button>
+        </div>
+      </div>
+      <div className="history-card-body">
+        <ResultBody item={item} />
+      </div>
+    </div>
+  );
+}
+
+// ── Main app ──
+export default function App() {
   const [text, setText] = useState("");
-  const [result, setResult] = useState(null);
+  const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeType, setActiveType] = useState(null);
-  const [error, setError] = useState(null); // { message, type: 'error' | 'warning' }
+  const [error, setError] = useState(null);
   const [selectedTone, setSelectedTone] = useState("formal");
   const [selectedLang, setSelectedLang] = useState("en");
   const [responseLang, setResponseLang] = useState("English");
   const [question, setQuestion] = useState("");
+  const historyBottomRef = useRef(null);
+
+  // Scroll to newest result
+  useEffect(() => {
+    if (history.length > 0) {
+      historyBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [history.length]);
 
   const showError = (message, type = "error") => setError({ message, type });
   const clearError = () => setError(null);
 
+  const pushResult = (item) =>
+    setHistory((prev) => [...prev, { ...item, id: Date.now(), timestamp: new Date() }]);
+
+  const removeItem = (id) => setHistory((prev) => prev.filter((i) => i.id !== id));
+  const clearHistory = () => setHistory([]);
+
   const handle = async (type, extra = {}) => {
     const err = validateForSubmit(text);
     if (err) { showError(err, "warning"); return; }
-    clearError(); setResult(null); setActiveType(type); setLoading(true);
+    clearError(); setActiveType(type); setLoading(true);
     try {
       const data = await analyzeText(text, type, { ...extra, response_lang: responseLang });
-      setResult({ type, data, question: extra.question });
+      pushResult({ type, data, question: extra.question });
     } catch (e) {
       showError(e.message);
     } finally {
@@ -91,16 +213,17 @@ function App() {
   };
 
   const handleTranslate = async () => {
-    const err = validateForSubmit(text, false); // translation allows short text
+    const err = validateForSubmit(text, false);
     if (err) { showError(err, "warning"); return; }
     if (text.length > MAX_TRANSLATE_CHARS) {
-      showError(`Translation is limited to ${MAX_TRANSLATE_CHARS} characters. Your text has ${text.length}.`, "warning");
+      showError(`Translation is limited to ${MAX_TRANSLATE_CHARS} characters (current: ${text.length}).`, "warning");
       return;
     }
-    clearError(); setResult(null); setActiveType("translate"); setLoading(true);
+    clearError(); setActiveType("translate"); setLoading(true);
     try {
       const data = await translateText(text, selectedLang);
-      setResult({ type: "translate", data });
+      const toLang = LANGUAGES.find((l) => l.code === selectedLang)?.label ?? selectedLang;
+      pushResult({ type: "translate", data, toLang });
     } catch (e) {
       showError(e.message);
     } finally {
@@ -115,57 +238,6 @@ function App() {
     hint?.type === "warning" ? "textarea-warn" : "",
   ].join(" ").trim();
 
-  const renderResult = () => {
-    if (!result) return null;
-    const { type, data } = result;
-
-    if (type === "summary_short" || type === "summary_long" || type === "tone") {
-      return <p className="result-text">{data.summary ?? data.rewritten}</p>;
-    }
-    if (type === "translate") {
-      const langLabel = LANGUAGES.find((l) => l.code === selectedLang)?.label ?? selectedLang;
-      return (
-        <>
-          <p className="result-lang-note">Translated to {langLabel}</p>
-          <p className="result-text">{data.translation}</p>
-        </>
-      );
-    }
-    if (type === "keywords") {
-      return (
-        <div className="keywords-wrap">
-          {data.keywords.map((kw, i) => <span key={i} className="keyword-tag">{kw}</span>)}
-        </div>
-      );
-    }
-    if (type === "qa") {
-      return (
-        <div className="qa-wrap">
-          <p className="qa-question">❓ {result.question}</p>
-          <p className="result-text">{data.answer}</p>
-        </div>
-      );
-    }
-
-    if (type === "sentiment") {
-      const s = data.sentiment;
-      const pct = Math.round((s.score || 0) * 100);
-      return (
-        <div className="sentiment-wrap">
-          <div className="sentiment-top">
-            <span className={`sentiment-badge ${s.label}`}>{s.label}</span>
-            <span className="sentiment-score">Confidence: <span>{pct}%</span></span>
-          </div>
-          <div className="confidence-bar-bg">
-            <div className="confidence-bar-fill" style={{ width: `${pct}%` }} />
-          </div>
-          <p className="sentiment-explanation">{s.explanation}</p>
-        </div>
-      );
-    }
-    return null;
-  };
-
   return (
     <div className="app">
       <header className="header">
@@ -175,9 +247,11 @@ function App() {
       </header>
 
       <div className="workspace">
-        {/* ── Left: input + result ── */}
+        {/* ── Left panel ── */}
         <div className="left-panel">
-          <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+
+          {/* Input */}
+          <div className="input-section">
             <p className="section-label">Input text</p>
             <textarea
               className={textareaClass}
@@ -197,6 +271,7 @@ function App() {
             </div>
           </div>
 
+          {/* Feedback */}
           {error && (
             <div className={`feedback-msg feedback-${error.type}`}>
               <span className="feedback-icon">{error.type === "warning" ? "⚠" : "✕"}</span>
@@ -204,27 +279,45 @@ function App() {
             </div>
           )}
 
-          {loading && (
-            <div className="loader-wrap">
-              <div className="spinner" />
-              {activeType === "translate" ? "Translating..." : "Analyzing with AI..."}
-            </div>
-          )}
-
-          {result && !loading && (
-            <div className="result-area">
-              <p className="section-label">Result</p>
-              <div className="result-card">
-                <div className="result-header">
-                  <span className="result-type-badge">{TYPE_LABELS[result.type]}</span>
-                </div>
-                <div className="result-body">{renderResult()}</div>
+          {/* History */}
+          <div className="history-section">
+            {history.length > 0 && (
+              <div className="history-header">
+                <p className="section-label" style={{ margin: 0 }}>
+                  Results · {history.length}
+                </p>
+                <button className="clear-btn" onClick={clearHistory}>Clear all</button>
               </div>
+            )}
+
+            <div className="history-list">
+              {history.length === 0 && !loading && (
+                <div className="history-empty">
+                  <span className="history-empty-icon">✦</span>
+                  <p>Results will appear here</p>
+                  <p>You can run multiple analyses on the same text</p>
+                </div>
+              )}
+
+              {history.map((item) => (
+                <HistoryCard key={item.id} item={item} onRemove={removeItem} />
+              ))}
+
+              {loading && (
+                <div className="history-card history-loading">
+                  <div className="loader-wrap">
+                    <div className="spinner" />
+                    {activeType === "translate" ? "Translating..." : "Analyzing with AI..."}
+                  </div>
+                </div>
+              )}
+
+              <div ref={historyBottomRef} />
             </div>
-          )}
+          </div>
         </div>
 
-        {/* ── Right: controls ── */}
+        {/* ── Right panel ── */}
         <div className="right-panel">
 
           <div className="panel-section">
@@ -293,8 +386,10 @@ function App() {
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !loading)
+                if (e.key === "Enter" && !loading) {
+                  if (!question.trim()) { showError("Write a question first.", "warning"); return; }
                   handle("qa", { question });
+                }
               }}
               disabled={loading}
             />
@@ -327,7 +422,7 @@ function App() {
               onClick={handleTranslate}
               disabled={loading}
             >
-              🌐 Translate to {LANGUAGES.find(l => l.code === selectedLang)?.label} →
+              🌐 Translate to {LANGUAGES.find((l) => l.code === selectedLang)?.label} →
             </button>
           </div>
 
@@ -338,5 +433,3 @@ function App() {
     </div>
   );
 }
-
-export default App;
