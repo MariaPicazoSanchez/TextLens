@@ -14,6 +14,8 @@ const ACTIONS = [
   { type: "summary_long",  icon: "📄", titleKey: "longSummary",  descKey: "longSummaryDesc" },
   { type: "keywords",      icon: "🏷️", titleKey: "keywords",     descKey: "keywordsDesc" },
   { type: "sentiment",     icon: "💡", titleKey: "sentiment",    descKey: "sentimentDesc" },
+  { type: "topic",         icon: "🗂️", titleKey: "topic",        descKey: "topicDesc" },
+  { type: "improve",       icon: "✍️", titleKey: "improve",      descKey: "improveDesc" },
 ];
 
 const LANGUAGES = [
@@ -43,6 +45,8 @@ const TYPE_ICONS = {
   tone:          "✏️",
   translate:     "🌐",
   qa:            "❓",
+  topic:         "🗂️",
+  improve:       "✍️",
 };
 
 function getTypeLabel(type, tr) {
@@ -54,6 +58,8 @@ function getTypeLabel(type, tr) {
     tone:          "typeTone",
     translate:     "typeTranslate",
     qa:            "typeQA",
+    topic:         "typeTopic",
+    improve:       "typeImprove",
   };
   return tr(map[type] ?? type);
 }
@@ -61,25 +67,52 @@ function getTypeLabel(type, tr) {
 const STREAM_TYPES = new Set(["summary_short", "summary_long", "tone", "qa"]);
 
 function dataKey(type) {
-  if (type === "tone") return "rewritten";
+  if (type === "tone" || type === "improve") return "rewritten";
   if (type === "qa")   return "answer";
   return "summary";
 }
 
+function countSyllables(word) {
+  word = word.toLowerCase().replace(/[^a-z]/g, "");
+  if (word.length <= 3) return 1;
+  word = word.replace(/(?:[^laeiouy]es|[^laeiouy]ed|[^laeiouy]e)$/, "");
+  const m = word.match(/[aeiouy]{1,2}/g);
+  return m ? m.length : 1;
+}
+
+function fleschScore(words, sentences, syllables) {
+  if (words === 0 || sentences === 0) return null;
+  const score = 206.835 - 1.015 * (words / sentences) - 84.6 * (syllables / words);
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
 function computeStats(text) {
   const trimmed = text.trim();
-  if (!trimmed) return { words: 0, sentences: 0, paragraphs: 0, readTime: "—" };
-  const words      = trimmed.split(/\s+/).length;
-  const sentences  = (trimmed.match(/[^.!?]*[.!?]+/g) ?? []).length || (trimmed.length > 0 ? 1 : 0);
+  if (!trimmed) return { words: 0, sentences: 0, paragraphs: 0, readTime: "—", flesch: null };
+  const wordList   = trimmed.split(/\s+/);
+  const words      = wordList.length;
+  const sentences  = (trimmed.match(/[^.!?]*[.!?]+/g) ?? []).length || 1;
   const paragraphs = trimmed.split(/\n{2,}/).filter(Boolean).length || 1;
   const mins       = words / 200;
   const readTime   = mins < 1 ? `${Math.round(mins * 60)}s` : `${Math.ceil(mins)}m`;
-  return { words, sentences, paragraphs, readTime };
+  const syllables  = wordList.reduce((sum, w) => sum + countSyllables(w), 0);
+  const flesch     = fleschScore(words, sentences, syllables);
+  return { words, sentences, paragraphs, readTime, flesch };
+}
+
+function fleschLabel(score, tr) {
+  if (score === null) return null;
+  if (score >= 80) return { label: tr("readVeryEasy"), cls: "flesch-easy" };
+  if (score >= 60) return { label: tr("readEasy"),    cls: "flesch-easy" };
+  if (score >= 40) return { label: tr("readMedium"),  cls: "flesch-medium" };
+  if (score >= 20) return { label: tr("readHard"),    cls: "flesch-hard" };
+  return               { label: tr("readVeryHard"),   cls: "flesch-hard" };
 }
 
 function TextStats({ text, tr }) {
-  const { words, sentences, paragraphs, readTime } = computeStats(text);
+  const { words, sentences, paragraphs, readTime, flesch } = computeStats(text);
   const hasText = text.trim().length > 0;
+  const fl = fleschLabel(flesch, tr);
   return (
     <div className={`text-stats ${hasText ? "text-stats-active" : ""}`}>
       <span className="stat-item"><span className="stat-value">{words}</span> {tr("words")}</span>
@@ -89,6 +122,13 @@ function TextStats({ text, tr }) {
       <span className="stat-item"><span className="stat-value">{paragraphs}</span> {paragraphs === 1 ? tr("paragraph") : tr("paragraphs")}</span>
       <span className="stat-sep" />
       <span className="stat-item"><span className="stat-value">{readTime}</span> {tr("read")}</span>
+      {fl && <>
+        <span className="stat-sep" />
+        <span className="stat-item">
+          <span className="stat-value">{flesch}</span>
+          <span className={`flesch-badge ${fl.cls}`}>{fl.label}</span>
+        </span>
+      </>}
     </div>
   );
 }
@@ -124,6 +164,7 @@ function getPlainText(item) {
   if (type === "sentiment") return `${data.sentiment.label} (${Math.round((data.sentiment.score || 0) * 100)}%)\n${data.sentiment.explanation}`;
   if (type === "qa") return `Q: ${item.question}\nA: ${data.answer}`;
   if (type === "translate") return data.translation;
+  if (type === "topic") return `${data.topic.main} — ${data.topic.tags?.join(", ")}\n${data.topic.description}`;
   return data.summary ?? data.rewritten ?? "";
 }
 
@@ -131,12 +172,26 @@ function getPlainText(item) {
 function ResultBody({ item, tr }) {
   const { type, data, streaming } = item;
 
-  if (type === "summary_short" || type === "summary_long" || type === "tone") {
+  if (type === "summary_short" || type === "summary_long" || type === "tone" || type === "improve") {
     return (
       <p className="result-text">
         {data.summary ?? data.rewritten}
         {streaming && <span className="stream-cursor" />}
       </p>
+    );
+  }
+  if (type === "topic") {
+    const { main, tags = [], description } = data.topic ?? {};
+    return (
+      <div className="topic-wrap">
+        <div className="topic-top">
+          <span className="topic-main-badge">{main}</span>
+        </div>
+        <div className="keywords-wrap" style={{ marginTop: "8px" }}>
+          {tags.map((tag, i) => <span key={i} className="keyword-tag">{tag}</span>)}
+        </div>
+        {description && <p className="topic-description">{description}</p>}
+      </div>
     );
   }
   if (type === "translate") {
@@ -439,7 +494,7 @@ export default function App() {
               >
                 {uploading
                   ? <><span className="upload-spinner" />{tr("extracting")}</>
-                  : <><span className="upload-icon">📎</span>{tr("uploadBtn")}</>
+                  : <><svg className="upload-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>{tr("uploadBtn")}</>
                 }
               </button>
               <span className="upload-hint">{tr("uploadHint")}</span>
@@ -598,7 +653,7 @@ export default function App() {
               }}
               disabled={loading}
             >
-              ❓ {tr("askBtn")}
+              {tr("askBtn")}
             </button>
           </div>
 

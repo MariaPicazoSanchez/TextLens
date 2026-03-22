@@ -39,6 +39,19 @@ def _tone_prompt(text: str, tone: str, lang: str) -> str:
             f"Keep the same meaning but change the style. "
             f"Reply with only the rewritten text, no commentary. Respond in {lang}.\n\n{text}")
 
+def _topic_prompt(text: str, lang: str) -> str:
+    return (f"Classify the main topic of the following text. "
+            f"Return ONLY a JSON object with these fields: "
+            f"\"main\" (one broad category, e.g. Technology, Politics, Science, Health, Business, Sports, Culture, Education, Environment, Law, Other), "
+            f"\"tags\" (array of 3-5 specific topic tags), "
+            f"\"description\" (one sentence describing what the text is about, written in {lang}). "
+            f"No extra text, just the JSON.\n\n{text}")
+
+def _improve_prompt(text: str, lang: str) -> str:
+    return (f"Improve the writing of the following text. Fix grammar, spelling, punctuation, and clarity. "
+            f"Improve sentence structure and flow where needed, but keep the original meaning, tone, and style. "
+            f"Reply with only the improved text, no commentary, no explanations. Respond in {lang}.\n\n{text}")
+
 def _qa_prompt(text: str, question: str, lang: str) -> str:
     return (f"Answer the following question based exclusively on the text provided. "
             f"If the answer cannot be found in the text, say so clearly. "
@@ -112,6 +125,19 @@ def answer_question(text: str, question: str, lang: str = "English", model: str 
 def change_tone(text: str, tone: str, lang: str = "English", model: str = DEFAULT_MODEL) -> dict:
     return {"rewritten": _chat(_tone_prompt(text, tone, lang), model)}
 
+
+def classify_topic(text: str, lang: str = "English", model: str = DEFAULT_MODEL) -> dict:
+    raw = _chat(_topic_prompt(text, lang), model)
+    try:
+        topic = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
+    except (ValueError, json.JSONDecodeError):
+        topic = {"main": "Unknown", "tags": [], "description": raw}
+    return {"topic": topic}
+
+
+def improve_writing(text: str, lang: str = "English", model: str = DEFAULT_MODEL) -> dict:
+    return {"rewritten": _chat(_improve_prompt(text, lang), model)}
+
 # ── Streaming ─────────────────────────────────────────────────────────────────
 
 def _chat_stream(prompt: str, model_key: str = DEFAULT_MODEL):
@@ -135,6 +161,10 @@ def _chat_stream(prompt: str, model_key: str = DEFAULT_MODEL):
         raise HTTPException(503, "Could not connect to Groq API. Check your internet connection.")
     except APIStatusError as e:
         raise HTTPException(502, f"Groq API error: {e.message}")
+
+
+def improve_writing_stream(text: str, lang: str = "English", model: str = DEFAULT_MODEL):
+    return _chat_stream(_improve_prompt(text, lang), model)
 
 
 def summarize_stream(text: str, mode: str, lang: str = "English", model: str = DEFAULT_MODEL):

@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import Optional
 from services.llm_service import (
     summarize, extract_keywords, analyze_sentiment, change_tone, answer_question,
+    classify_topic, improve_writing, improve_writing_stream,
     summarize_stream, change_tone_stream, answer_question_stream, MODELS, DEFAULT_MODEL,
 )
 
@@ -12,8 +13,8 @@ router = APIRouter()
 
 MIN_CHARS = 15
 MAX_CHARS = 3000
-VALID_TYPES  = {"summary_short", "summary_long", "keywords", "sentiment", "tone", "qa"}
-STREAM_TYPES = {"summary_short", "summary_long", "tone", "qa"}
+VALID_TYPES  = {"summary_short", "summary_long", "keywords", "sentiment", "tone", "qa", "topic", "improve"}
+STREAM_TYPES = {"summary_short", "summary_long", "tone", "qa", "improve"}
 VALID_TONES  = {"formal", "casual", "positive", "negative", "persuasive", "simple"}
 
 
@@ -65,6 +66,8 @@ def analyze(request: AnalyzeRequest):
     if request.type == "sentiment":      return analyze_sentiment(request.text, lang, model)
     if request.type == "tone":           return change_tone(request.text, request.tone, lang, model)
     if request.type == "qa":             return answer_question(request.text, request.question, lang, model)
+    if request.type == "topic":          return classify_topic(request.text, lang, model)
+    if request.type == "improve":        return improve_writing(request.text, lang, model)
 
 
 # ── Streaming endpoint ────────────────────────────────────────────────────────
@@ -87,6 +90,8 @@ def analyze_stream(request: AnalyzeRequest):
         chunks = change_tone_stream(request.text, request.tone, lang, model)
     elif request.type == "qa":
         chunks = answer_question_stream(request.text, request.question, lang, model)
+    elif request.type == "improve":
+        chunks = improve_writing_stream(request.text, lang, model)
 
     def sse_generator():
         try:
