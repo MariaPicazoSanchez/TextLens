@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { analyzeText, translateText, streamAnalyzeText } from "./services/api";
+import { t } from "./i18n";
 import "./App.css";
 
 const MIN_CHARS = 15;
@@ -9,10 +10,10 @@ const MAX_TRANSLATE_CHARS = 500;
 const TONES = ["formal", "casual", "positive", "negative", "persuasive", "simple"];
 
 const ACTIONS = [
-  { type: "summary_short", icon: "⚡", title: "Short summary", desc: "2-3 key sentences" },
-  { type: "summary_long",  icon: "📄", title: "Long summary",  desc: "Full breakdown" },
-  { type: "keywords",      icon: "🏷️", title: "Keywords",      desc: "Key terms" },
-  { type: "sentiment",     icon: "💡", title: "Sentiment",     desc: "Emotional tone" },
+  { type: "summary_short", icon: "⚡", titleKey: "shortSummary", descKey: "shortSummaryDesc" },
+  { type: "summary_long",  icon: "📄", titleKey: "longSummary",  descKey: "longSummaryDesc" },
+  { type: "keywords",      icon: "🏷️", titleKey: "keywords",     descKey: "keywordsDesc" },
+  { type: "sentiment",     icon: "💡", titleKey: "sentiment",    descKey: "sentimentDesc" },
 ];
 
 const LANGUAGES = [
@@ -34,16 +35,6 @@ const LANGUAGES = [
   { code: "uk", label: "Ukrainian" },
 ];
 
-const TYPE_LABELS = {
-  summary_short: "Short summary",
-  summary_long:  "Long summary",
-  keywords:      "Keywords",
-  sentiment:     "Sentiment",
-  tone:          "Tone rewrite",
-  translate:     "Translation",
-  qa:            "Q&A",
-};
-
 const TYPE_ICONS = {
   summary_short: "⚡",
   summary_long:  "📄",
@@ -53,6 +44,19 @@ const TYPE_ICONS = {
   translate:     "🌐",
   qa:            "❓",
 };
+
+function getTypeLabel(type, tr) {
+  const map = {
+    summary_short: "typeSummaryShort",
+    summary_long:  "typeSummaryLong",
+    keywords:      "typeKeywords",
+    sentiment:     "typeSentiment",
+    tone:          "typeTone",
+    translate:     "typeTranslate",
+    qa:            "typeQA",
+  };
+  return tr(map[type] ?? type);
+}
 
 const STREAM_TYPES = new Set(["summary_short", "summary_long", "tone", "qa"]);
 
@@ -73,36 +77,36 @@ function computeStats(text) {
   return { words, sentences, paragraphs, readTime };
 }
 
-function TextStats({ text }) {
+function TextStats({ text, tr }) {
   const { words, sentences, paragraphs, readTime } = computeStats(text);
   const hasText = text.trim().length > 0;
   return (
     <div className={`text-stats ${hasText ? "text-stats-active" : ""}`}>
-      <span className="stat-item"><span className="stat-value">{words}</span> words</span>
+      <span className="stat-item"><span className="stat-value">{words}</span> {tr("words")}</span>
       <span className="stat-sep" />
-      <span className="stat-item"><span className="stat-value">{sentences}</span> sentences</span>
+      <span className="stat-item"><span className="stat-value">{sentences}</span> {tr("sentences")}</span>
       <span className="stat-sep" />
-      <span className="stat-item"><span className="stat-value">{paragraphs}</span> {paragraphs === 1 ? "paragraph" : "paragraphs"}</span>
+      <span className="stat-item"><span className="stat-value">{paragraphs}</span> {paragraphs === 1 ? tr("paragraph") : tr("paragraphs")}</span>
       <span className="stat-sep" />
-      <span className="stat-item"><span className="stat-value">{readTime}</span> read</span>
+      <span className="stat-item"><span className="stat-value">{readTime}</span> {tr("read")}</span>
     </div>
   );
 }
 
-function getTextHint(text) {
+function getTextHint(text, tr) {
   const len = text.trim().length;
   if (text.length === 0) return null;
-  if (len < MIN_CHARS) return { message: `${MIN_CHARS - len} more characters needed`, type: "warning" };
-  if (text.length >= MAX_CHARS) return { message: `Character limit reached (${MAX_CHARS})`, type: "error" };
+  if (len < MIN_CHARS) return { message: tr("charsNeeded", MIN_CHARS - len), type: "warning" };
+  if (text.length >= MAX_CHARS) return { message: tr("charLimitReached", MAX_CHARS), type: "error" };
   return null;
 }
 
-function validateForSubmit(text, requireMin = true) {
+function validateForSubmit(text, tr, requireMin = true) {
   const trimmed = text.trim();
-  if (!trimmed) return "The text cannot be empty.";
+  if (!trimmed) return tr("errEmpty");
   if (requireMin && trimmed.length < MIN_CHARS)
-    return `Text is too short (${trimmed.length}/${MIN_CHARS} characters). Add a bit more content.`;
-  if (text.length > MAX_CHARS) return `Text exceeds the ${MAX_CHARS} character limit.`;
+    return tr("errTooShort", trimmed.length, MIN_CHARS);
+  if (text.length > MAX_CHARS) return tr("errTooLong", MAX_CHARS);
   return null;
 }
 
@@ -123,8 +127,8 @@ function getPlainText(item) {
   return data.summary ?? data.rewritten ?? "";
 }
 
-// ── Result body renderer (shared between history items) ──
-function ResultBody({ item }) {
+// ── Result body renderer ──
+function ResultBody({ item, tr }) {
   const { type, data, streaming } = item;
 
   if (type === "summary_short" || type === "summary_long" || type === "tone") {
@@ -138,7 +142,7 @@ function ResultBody({ item }) {
   if (type === "translate") {
     return (
       <>
-        <p className="result-lang-note">Translated to {item.toLang}</p>
+        <p className="result-lang-note">{tr("translatedTo", item.toLang)}</p>
         <p className="result-text">{data.translation}</p>
       </>
     );
@@ -168,7 +172,7 @@ function ResultBody({ item }) {
       <div className="sentiment-wrap">
         <div className="sentiment-top">
           <span className={`sentiment-badge ${s.label}`}>{s.label}</span>
-          <span className="sentiment-score">Confidence: <span>{pct}%</span></span>
+          <span className="sentiment-score">{tr("confidence")}: <span>{pct}%</span></span>
         </div>
         <div className="confidence-bar-bg">
           <div className="confidence-bar-fill" style={{ width: `${pct}%` }} />
@@ -181,7 +185,7 @@ function ResultBody({ item }) {
 }
 
 // ── Single history card ──
-function HistoryCard({ item, onRemove }) {
+function HistoryCard({ item, onRemove, tr }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -191,22 +195,23 @@ function HistoryCard({ item, onRemove }) {
   };
 
   return (
-    <div className="history-card">
+    <div className={`history-card ${item.updating ? "history-card-updating" : ""}`}>
       <div className="history-card-header">
         <span className="history-type-icon">{TYPE_ICONS[item.type]}</span>
-        <span className="result-type-badge">{TYPE_LABELS[item.type]}</span>
+        <span className="result-type-badge">{getTypeLabel(item.type, tr)}</span>
+        {item.updating && <span className="updating-badge">{tr("updating")}</span>}
         <span className="history-time">{formatTime(item.timestamp)}</span>
         <div className="history-actions">
-          <button className="icon-btn" title="Copy" onClick={handleCopy}>
+          <button className="icon-btn" title={tr("copy")} onClick={handleCopy} disabled={item.updating || item.streaming}>
             {copied ? "✓" : "⧉"}
           </button>
-          <button className="icon-btn icon-btn-remove" title="Remove" onClick={() => onRemove(item.id)}>
+          <button className="icon-btn icon-btn-remove" title={tr("remove")} onClick={() => onRemove(item.id)}>
             ✕
           </button>
         </div>
       </div>
-      <div className="history-card-body">
-        <ResultBody item={item} />
+      <div className={`history-card-body ${item.updating ? "body-updating" : ""}`}>
+        <ResultBody item={item} tr={tr} />
       </div>
     </div>
   );
@@ -224,6 +229,9 @@ export default function App() {
   const [responseLang, setResponseLang] = useState("English");
   const [question, setQuestion] = useState("");
   const historyBottomRef = useRef(null);
+  const isFirstLangRender = useRef(true);
+
+  const tr = (key, ...args) => t(key, responseLang, ...args);
 
   // Scroll to newest result
   useEffect(() => {
@@ -231,6 +239,30 @@ export default function App() {
       historyBottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [history.length]);
+
+  // Re-run all history items when response language changes
+  useEffect(() => {
+    if (isFirstLangRender.current) { isFirstLangRender.current = false; return; }
+    const retranslatable = history.filter(i => i.type !== "translate" && !i.streaming);
+    if (retranslatable.length === 0) return;
+
+    (async () => {
+      for (const item of retranslatable) {
+        setHistory(prev => prev.map(h => h.id === item.id ? { ...h, updating: true } : h));
+        try {
+          const extra = { response_lang: responseLang };
+          if (item.type === "tone") extra.tone = item.tone;
+          if (item.type === "qa")   extra.question = item.question;
+          const data = await analyzeText(item.originalText, item.type, extra);
+          setHistory(prev => prev.map(h =>
+            h.id === item.id ? { ...h, data, updating: false } : h
+          ));
+        } catch {
+          setHistory(prev => prev.map(h => h.id === item.id ? { ...h, updating: false } : h));
+        }
+      }
+    })();
+  }, [responseLang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const showError = (message, type = "error") => setError({ message, type });
   const clearError = () => setError(null);
@@ -242,7 +274,7 @@ export default function App() {
   const clearHistory = () => setHistory([]);
 
   const handle = async (type, extra = {}) => {
-    const err = validateForSubmit(text);
+    const err = validateForSubmit(text, tr);
     if (err) { showError(err, "warning"); return; }
     clearError(); setActiveType(type); setLoading(true);
 
@@ -250,15 +282,15 @@ export default function App() {
       const id  = Date.now();
       const key = dataKey(type);
 
-      // Push placeholder immediately so the card appears
       setHistory(prev => [...prev, {
         id, type, data: { [key]: "" },
         question: extra.question,
+        tone: extra.tone,
+        originalText: text,
         timestamp: new Date(),
         streaming: true,
       }]);
 
-      // Re-enable buttons — streaming continues on the card itself
       setLoading(false); setActiveType(null);
 
       streamAnalyzeText(
@@ -283,7 +315,7 @@ export default function App() {
     } else {
       try {
         const data = await analyzeText(text, type, { ...extra, response_lang: responseLang });
-        pushResult({ type, data, question: extra.question });
+        pushResult({ type, data, question: extra.question, tone: extra.tone, originalText: text });
       } catch (e) {
         showError(e.message);
       } finally {
@@ -293,17 +325,17 @@ export default function App() {
   };
 
   const handleTranslate = async () => {
-    const err = validateForSubmit(text, false);
+    const err = validateForSubmit(text, tr, false);
     if (err) { showError(err, "warning"); return; }
     if (text.length > MAX_TRANSLATE_CHARS) {
-      showError(`Translation is limited to ${MAX_TRANSLATE_CHARS} characters (current: ${text.length}).`, "warning");
+      showError(tr("errTranslateLimit", MAX_TRANSLATE_CHARS, text.length), "warning");
       return;
     }
     clearError(); setActiveType("translate"); setLoading(true);
     try {
       const data = await translateText(text, selectedLang);
       const toLang = LANGUAGES.find((l) => l.code === selectedLang)?.label ?? selectedLang;
-      pushResult({ type: "translate", data, toLang });
+      pushResult({ type: "translate", data, toLang, originalText: text });
     } catch (e) {
       showError(e.message);
     } finally {
@@ -311,19 +343,22 @@ export default function App() {
     }
   };
 
-  const hint = getTextHint(text);
+  const hint = getTextHint(text, tr);
   const textareaClass = [
     "textarea",
     hint?.type === "error" ? "textarea-error" : "",
     hint?.type === "warning" ? "textarea-warn" : "",
   ].join(" ").trim();
 
+  const selectedLangLabel = tr("langNames")?.[selectedLang] ?? LANGUAGES.find((l) => l.code === selectedLang)?.label ?? selectedLang;
+  const selectedToneLabel = tr("tones")?.[selectedTone] ?? selectedTone;
+
   return (
     <div className="app">
       <header className="header">
         <div className="header-logo">🔍</div>
         <h1>TextLens</h1>
-        <span className="header-subtitle">Powered by Groq · Llama 3.1</span>
+        <span className="header-subtitle">{tr("poweredBy")}</span>
       </header>
 
       <div className="workspace">
@@ -332,10 +367,10 @@ export default function App() {
 
           {/* Input */}
           <div className="input-section">
-            <p className="section-label">Input text</p>
+            <p className="section-label">{tr("inputText")}</p>
             <textarea
               className={textareaClass}
-              placeholder="Paste or write your text here..."
+              placeholder={tr("inputPlaceholder")}
               value={text}
               onChange={(e) => { setText(e.target.value.slice(0, MAX_CHARS)); clearError(); }}
               maxLength={MAX_CHARS}
@@ -349,7 +384,7 @@ export default function App() {
                 {text.length} / {MAX_CHARS}
               </span>
             </div>
-            <TextStats text={text} />
+            <TextStats text={text} tr={tr} />
           </div>
 
           {/* Feedback */}
@@ -365,9 +400,9 @@ export default function App() {
             {history.length > 0 && (
               <div className="history-header">
                 <p className="section-label" style={{ margin: 0 }}>
-                  Results · {history.length}
+                  {tr("results")} · {history.length}
                 </p>
-                <button className="clear-btn" onClick={clearHistory}>Clear all</button>
+                <button className="clear-btn" onClick={clearHistory}>{tr("clearAll")}</button>
               </div>
             )}
 
@@ -375,20 +410,20 @@ export default function App() {
               {history.length === 0 && !loading && (
                 <div className="history-empty">
                   <span className="history-empty-icon">✦</span>
-                  <p>Results will appear here</p>
-                  <p>You can run multiple analyses on the same text</p>
+                  <p>{tr("emptyTitle")}</p>
+                  <p>{tr("emptyDesc")}</p>
                 </div>
               )}
 
               {history.map((item) => (
-                <HistoryCard key={item.id} item={item} onRemove={removeItem} />
+                <HistoryCard key={item.id} item={item} onRemove={removeItem} tr={tr} />
               ))}
 
               {loading && (
                 <div className="history-card history-loading">
                   <div className="loader-wrap">
                     <div className="spinner" />
-                    {activeType === "translate" ? "Translating..." : "Analyzing with AI..."}
+                    {activeType === "translate" ? tr("translating") : tr("analyzing")}
                   </div>
                 </div>
               )}
@@ -402,23 +437,23 @@ export default function App() {
         <div className="right-panel">
 
           <div className="panel-section">
-            <p className="section-label">Response language</p>
+            <p className="section-label">{tr("responseLanguage")}</p>
             <select
               className="lang-select"
               value={responseLang}
               onChange={(e) => setResponseLang(e.target.value)}
               disabled={loading}
             >
-              {LANGUAGES.map(({ label }) => (
-                <option key={label} value={label}>{label}</option>
+              {LANGUAGES.map(({ code, label }) => (
+                <option key={label} value={label}>{tr("langNames")?.[code] ?? label}</option>
               ))}
             </select>
           </div>
 
           <div className="panel-section">
-            <p className="section-label">Analyze</p>
+            <p className="section-label">{tr("analyze")}</p>
             <div className="actions">
-              {ACTIONS.map(({ type, icon, title, desc }) => (
+              {ACTIONS.map(({ type, icon, titleKey, descKey }) => (
                 <button
                   key={type}
                   className={`action-btn ${activeType === type ? "active" : ""}`}
@@ -427,8 +462,8 @@ export default function App() {
                 >
                   <span className="btn-icon">{icon}</span>
                   <span className="btn-text">
-                    <span className="btn-title">{title}</span>
-                    <span className="btn-desc">{desc}</span>
+                    <span className="btn-title">{tr(titleKey)}</span>
+                    <span className="btn-desc">{tr(descKey)}</span>
                   </span>
                 </button>
               ))}
@@ -436,16 +471,16 @@ export default function App() {
           </div>
 
           <div className="panel-section">
-            <p className="section-label">Change tone</p>
+            <p className="section-label">{tr("changeTone")}</p>
             <div className="tone-chips">
-              {TONES.map((t) => (
+              {TONES.map((tone) => (
                 <button
-                  key={t}
-                  className={`tone-chip ${selectedTone === t ? "selected" : ""}`}
-                  onClick={() => setSelectedTone(t)}
+                  key={tone}
+                  className={`tone-chip ${selectedTone === tone ? "selected" : ""}`}
+                  onClick={() => setSelectedTone(tone)}
                   disabled={loading}
                 >
-                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                  {tr("tones")?.[tone] ?? tone.charAt(0).toUpperCase() + tone.slice(1)}
                 </button>
               ))}
             </div>
@@ -454,21 +489,21 @@ export default function App() {
               onClick={() => handle("tone", { tone: selectedTone })}
               disabled={loading}
             >
-              Rewrite in {selectedTone} tone →
+              {tr("rewriteBtn", selectedToneLabel)}
             </button>
           </div>
 
           <div className="panel-section">
-            <p className="section-label">Ask a question</p>
+            <p className="section-label">{tr("askQuestion")}</p>
             <input
               className="question-input"
               type="text"
-              placeholder="What is the main topic?"
+              placeholder={tr("questionPlaceholder")}
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !loading) {
-                  if (!question.trim()) { showError("Write a question first.", "warning"); return; }
+                  if (!question.trim()) { showError(tr("errNoQuestion"), "warning"); return; }
                   handle("qa", { question });
                 }
               }}
@@ -477,17 +512,17 @@ export default function App() {
             <button
               className="run-btn purple"
               onClick={() => {
-                if (!question.trim()) { showError("Write a question first.", "warning"); return; }
+                if (!question.trim()) { showError(tr("errNoQuestion"), "warning"); return; }
                 handle("qa", { question });
               }}
               disabled={loading}
             >
-              ❓ Ask →
+              ❓ {tr("askBtn")}
             </button>
           </div>
 
           <div className="panel-section">
-            <p className="section-label">Translate</p>
+            <p className="section-label">{tr("translate")}</p>
             <select
               className="lang-select"
               value={selectedLang}
@@ -495,7 +530,7 @@ export default function App() {
               disabled={loading}
             >
               {LANGUAGES.map(({ code, label }) => (
-                <option key={code} value={code}>{label}</option>
+                <option key={code} value={code}>{tr("langNames")?.[code] ?? label}</option>
               ))}
             </select>
             <button
@@ -503,14 +538,14 @@ export default function App() {
               onClick={handleTranslate}
               disabled={loading}
             >
-              🌐 Translate to {LANGUAGES.find((l) => l.code === selectedLang)?.label} →
+              {tr("translateBtn", selectedLangLabel)}
             </button>
           </div>
 
         </div>
       </div>
 
-      <footer className="footer">TextLens — AI-powered text analysis</footer>
+      <footer className="footer">{tr("footer")}</footer>
     </div>
   );
 }

@@ -448,6 +448,31 @@ body {
 
 .history-card-body { padding: 14px; }
 
+.history-card-updating {
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.body-updating {
+  opacity: 0.45;
+  transition: opacity 0.3s;
+}
+
+.updating-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: #6366f1;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
 .history-loading {
   border-style: dashed;
   border-color: #6366f1;
