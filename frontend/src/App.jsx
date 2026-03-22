@@ -41,6 +41,7 @@ const TYPE_LABELS = {
   sentiment:     "Sentiment",
   tone:          "Tone rewrite",
   translate:     "Translation",
+  qa:            "Q&A",
 };
 
 // Returns { message, type: 'warning' | null } for inline textarea hint
@@ -70,6 +71,7 @@ function App() {
   const [selectedTone, setSelectedTone] = useState("formal");
   const [selectedLang, setSelectedLang] = useState("en");
   const [responseLang, setResponseLang] = useState("English");
+  const [question, setQuestion] = useState("");
 
   const showError = (message, type = "error") => setError({ message, type });
   const clearError = () => setError(null);
@@ -80,7 +82,7 @@ function App() {
     clearError(); setResult(null); setActiveType(type); setLoading(true);
     try {
       const data = await analyzeText(text, type, { ...extra, response_lang: responseLang });
-      setResult({ type, data });
+      setResult({ type, data, question: extra.question });
     } catch (e) {
       showError(e.message);
     } finally {
@@ -136,6 +138,15 @@ function App() {
         </div>
       );
     }
+    if (type === "qa") {
+      return (
+        <div className="qa-wrap">
+          <p className="qa-question">❓ {result.question}</p>
+          <p className="result-text">{data.answer}</p>
+        </div>
+      );
+    }
+
     if (type === "sentiment") {
       const s = data.sentiment;
       const pct = Math.round((s.score || 0) * 100);
@@ -270,6 +281,32 @@ function App() {
               disabled={loading}
             >
               Rewrite in {selectedTone} tone →
+            </button>
+          </div>
+
+          <div className="panel-section">
+            <p className="section-label">Ask a question</p>
+            <input
+              className="question-input"
+              type="text"
+              placeholder="What is the main topic?"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !loading)
+                  handle("qa", { question });
+              }}
+              disabled={loading}
+            />
+            <button
+              className="run-btn purple"
+              onClick={() => {
+                if (!question.trim()) { showError("Write a question first.", "warning"); return; }
+                handle("qa", { question });
+              }}
+              disabled={loading}
+            >
+              ❓ Ask →
             </button>
           </div>
 

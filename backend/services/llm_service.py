@@ -81,6 +81,17 @@ def analyze_sentiment(text: str, lang: str = "English") -> dict:
     return {"sentiment": sentiment}
 
 
+def answer_question(text: str, question: str, lang: str = "English") -> dict:
+    prompt = (
+        f"Answer the following question based exclusively on the text provided. "
+        f"If the answer cannot be found in the text, say so clearly. "
+        f"Be concise and direct. Respond in {lang}.\n\n"
+        f"Text:\n{text}\n\n"
+        f"Question: {question}"
+    )
+    return {"answer": _chat(prompt)}
+
+
 def change_tone(text: str, tone: str, lang: str = "English") -> dict:
     tone_descriptions = {
         "formal": "formal and professional",

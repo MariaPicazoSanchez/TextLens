@@ -1,13 +1,13 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from services.llm_service import summarize, extract_keywords, analyze_sentiment, change_tone
+from services.llm_service import summarize, extract_keywords, analyze_sentiment, change_tone, answer_question
 
 router = APIRouter()
 
 MIN_CHARS = 15
 MAX_CHARS = 3000
-VALID_TYPES = {"summary_short", "summary_long", "keywords", "sentiment", "tone"}
+VALID_TYPES = {"summary_short", "summary_long", "keywords", "sentiment", "tone", "qa"}
 VALID_TONES = {"formal", "casual", "positive", "negative", "persuasive", "simple"}
 
 
@@ -15,6 +15,7 @@ class AnalyzeRequest(BaseModel):
     text: str
     type: str
     tone: Optional[str] = None
+    question: Optional[str] = None
     response_lang: Optional[str] = "English"
 
 
@@ -58,3 +59,8 @@ def analyze(request: AnalyzeRequest):
         return extract_keywords(request.text, lang)
     if request.type == "sentiment":
         return analyze_sentiment(request.text, lang)
+
+    if request.type == "qa":
+        if not request.question or not request.question.strip():
+            raise HTTPException(status_code=400, detail="A question is required for Q&A.")
+        return answer_question(request.text, request.question, lang)
