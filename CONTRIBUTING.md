@@ -1,6 +1,6 @@
 # Contributing to TextLens
 
-Thank you for your interest in contributing! This document explains how to get the project running locally and how to submit changes.
+Contributions are welcome via **fork and Pull Request only**. Direct pushes to `main` are not accepted — the branch is protected.
 
 ---
 
@@ -23,17 +23,25 @@ frontend/   React + Vite UI — components, styles, i18n
 
 ## How to contribute
 
-1. **Fork** the repository and create a new branch from `main`:
+> **You must fork the repository.** Direct pushes to this repo are not permitted for external contributors.
+
+1. **Fork** the repository on GitHub.
+
+2. **Clone your fork** and create a feature branch:
 
    ```bash
+   git clone https://github.com/your-username/TextLens.git
+   cd TextLens
    git checkout -b feat/your-feature-name
    ```
 
-2. **Make your changes.** Keep commits focused — one logical change per commit.
+3. **Make your changes.** Keep commits focused — one logical change per commit.
 
-3. **Test manually** — start both backend and frontend and verify nothing is broken.
+4. **Test manually** — start both backend and frontend and verify nothing is broken.
 
-4. **Open a Pull Request** against `main` with a clear description of what changed and why.
+5. **Open a Pull Request** from your fork against the `main` branch of this repository. Include a clear description of what changed and why.
+
+All PRs are reviewed before merging. PRs that push directly to `main` or bypass the fork workflow will be closed.
 
 ---
 
