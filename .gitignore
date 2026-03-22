@@ -31,5 +31,14 @@ node_modules/
 
 # Env variables
 .env
+*.env
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# Build output
+frontend/dist/
+frontend/dist-ssr/
