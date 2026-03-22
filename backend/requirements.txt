@@ -3,3 +3,5 @@ uvicorn==0.42.0
 pydantic==2.12.5
 groq==0.28.0
 python-dotenv==1.0.1
+python-multipart==0.0.20
+pypdf==5.4.0

@@ -268,6 +268,55 @@ body {
   margin-bottom: 8px;
 }
 
+/* ── File upload ── */
+.upload-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px dashed #2d3548;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.upload-btn:hover:not(:disabled) {
+  border-color: #6366f1;
+  color: #a5b4fc;
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.upload-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.upload-icon { font-size: 14px; }
+
+.upload-hint {
+  font-size: 11px;
+  color: #4b5563;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.upload-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #4b5563;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
 /* ── Text stats bar ── */
 .text-stats {
   display: flex;

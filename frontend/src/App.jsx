@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { analyzeText, translateText, streamAnalyzeText } from "./services/api";
+import { analyzeText, translateText, streamAnalyzeText, uploadFile } from "./services/api";
 import { t } from "./i18n";
 import "./App.css";
 
@@ -225,6 +225,8 @@ export default function App() {
   const [activeType, setActiveType] = useState(null);
   const [error, setError] = useState(null);
   const [selectedModel, setSelectedModel] = useState("fast");
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
   const [selectedTone, setSelectedTone] = useState("formal");
   const [selectedLang, setSelectedLang] = useState("en");
   const [responseLang, setResponseLang] = useState("English");
@@ -273,6 +275,32 @@ export default function App() {
 
   const removeItem = (id) => setHistory((prev) => prev.filter((i) => i.id !== id));
   const clearHistory = () => setHistory([]);
+
+  const handleFileUpload = async (file) => {
+    if (!file) return;
+    const SUPPORTED = ["image/png", "image/jpeg", "image/webp", "application/pdf"];
+    if (!SUPPORTED.includes(file.type)) {
+      showError(tr("errFileType"), "warning");
+      return;
+    }
+    const isImage = file.type.startsWith("image/");
+    const maxMB = isImage ? 4 : 5;
+    if (file.size > maxMB * 1024 * 1024) {
+      showError(tr("errFileSize", isImage ? "Image" : "PDF", maxMB), "warning");
+      return;
+    }
+    clearError();
+    setUploading(true);
+    try {
+      const { text } = await uploadFile(file);
+      setText(text.slice(0, MAX_CHARS));
+    } catch (e) {
+      showError(e.message);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const handle = async (type, extra = {}) => {
     const err = validateForSubmit(text, tr);
@@ -375,6 +403,15 @@ export default function App() {
               value={text}
               onChange={(e) => { setText(e.target.value.slice(0, MAX_CHARS)); clearError(); }}
               maxLength={MAX_CHARS}
+              onPaste={(e) => {
+                const imageItem = [...(e.clipboardData?.items ?? [])].find(
+                  (item) => item.kind === "file" && item.type.startsWith("image/")
+                );
+                if (imageItem) {
+                  e.preventDefault();
+                  handleFileUpload(imageItem.getAsFile());
+                }
+              }}
             />
             <div className="textarea-footer">
               {hint
@@ -386,6 +423,27 @@ export default function App() {
               </span>
             </div>
             <TextStats text={text} tr={tr} />
+
+            <div className="upload-row">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".png,.jpg,.jpeg,.webp,.pdf"
+                style={{ display: "none" }}
+                onChange={(e) => handleFileUpload(e.target.files?.[0])}
+              />
+              <button
+                className="upload-btn"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading || loading}
+              >
+                {uploading
+                  ? <><span className="upload-spinner" />{tr("extracting")}</>
+                  : <><span className="upload-icon">📎</span>{tr("uploadBtn")}</>
+                }
+              </button>
+              <span className="upload-hint">{tr("uploadHint")}</span>
+            </div>
           </div>
 
           {/* Feedback */}

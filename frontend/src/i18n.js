@@ -48,6 +48,13 @@ const i18n = {
     errTooLong: max => `Text exceeds the ${max} character limit.`,
     errTranslateLimit: (max, cur) => `Translation is limited to ${max} characters (current: ${cur}).`,
     errNoQuestion: "Write a question first.",
+    // Upload
+    uploadBtn: "Upload file",
+    uploadHint: "PNG, JPG, WEBP, PDF · Max 4 MB · or Ctrl+V to paste an image",
+    extracting: "Extracting text…",
+    uploadSuccess: name => `Text extracted from "${name}"`,
+    errFileType: "Unsupported file. Use PNG, JPG, WEBP or PDF.",
+    errFileSize: (type, max) => `${type} is too large. Max ${max} MB.`,
     // Footer
     footer: "TextLens — AI-powered text analysis",
     langNames: { en:"English", es:"Spanish", fr:"French", de:"German", it:"Italian", pt:"Portuguese", nl:"Dutch", pl:"Polish", ru:"Russian", zh:"Chinese", ja:"Japanese", ko:"Korean", ar:"Arabic", tr:"Turkish", sv:"Swedish", uk:"Ukrainian" },

@@ -29,6 +29,24 @@ async function request(path, body) {
   return response.json();
 }
 
+export async function uploadFile(file) {
+  const form = new FormData();
+  form.append("file", file);
+  let response;
+  try {
+    response = await fetch(`${API_URL}/upload`, { method: "POST", body: form });
+  } catch {
+    throw new Error("Cannot reach the server. Is the backend running on port 8000?");
+  }
+  if (!response.ok) {
+    const known = HTTP_ERRORS[response.status];
+    if (known) throw new Error(known);
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.detail || `Unexpected error (${response.status}).`);
+  }
+  return response.json();
+}
+
 export function analyzeText(text, type, extra = {}) {
   return request("/analyze", { text, type, ...extra });
 }
