@@ -106,14 +106,57 @@ body {
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
+.textarea-warn { border-color: #d97706 !important; }
+.textarea-error { border-color: #ef4444 !important; }
+
+.textarea-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  min-height: 18px;
+}
+
+.hint {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.hint-warning { color: #d97706; }
+.hint-error   { color: #ef4444; }
+
 .char-count {
   font-size: 12px;
   color: #374151;
-  text-align: right;
   transition: color 0.2s;
 }
 
 .char-count-limit { color: #ef4444; font-weight: 600; }
+
+/* ── Feedback messages (warning / error) ── */
+.feedback-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.feedback-icon { flex-shrink: 0; margin-top: 1px; }
+
+.feedback-error {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #f87171;
+}
+
+.feedback-warning {
+  background: rgba(217, 119, 6, 0.08);
+  border: 1px solid rgba(217, 119, 6, 0.25);
+  color: #fbbf24;
+}
 
 /* ── Result area ── */
 .result-area {
@@ -401,19 +444,6 @@ body {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Error ── */
-.error-msg {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  border-radius: 10px;
-  color: #f87171;
-  font-size: 13px;
-  margin-top: 12px;
-}
 
 /* ── Footer ── */
 .footer {

@@ -1,21 +1,35 @@
 import os
 import json
-from groq import Groq
+from groq import Groq, AuthenticationError, RateLimitError, APIConnectionError, APIStatusError
+from fastapi import HTTPException
 from dotenv import load_dotenv
 
 load_dotenv()
 
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+_api_key = os.environ.get("GROQ_API_KEY")
+if not _api_key:
+    raise RuntimeError("GROQ_API_KEY is not set. Add it to your .env file.")
+
+client = Groq(api_key=_api_key)
 MODEL = "llama-3.1-8b-instant"
 
 
 def _chat(prompt: str) -> str:
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,
-    )
-    return response.choices[0].message.content.strip()
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+        )
+        return response.choices[0].message.content.strip()
+    except AuthenticationError:
+        raise HTTPException(status_code=401, detail="Invalid or missing Groq API key. Check your .env file.")
+    except RateLimitError:
+        raise HTTPException(status_code=429, detail="Groq rate limit reached. Wait a moment and try again.")
+    except APIConnectionError:
+        raise HTTPException(status_code=503, detail="Could not connect to Groq API. Check your internet connection.")
+    except APIStatusError as e:
+        raise HTTPException(status_code=502, detail=f"Groq API error: {e.message}")
 
 
 def summarize(text: str, mode: str) -> dict:

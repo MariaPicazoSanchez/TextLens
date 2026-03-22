@@ -2,6 +2,9 @@ import { useState } from "react";
 import { analyzeText, translateText } from "./services/api";
 import "./App.css";
 
+const MIN_CHARS = 15;
+const MAX_CHARS = 500;
+
 const TONES = ["formal", "casual", "positive", "negative", "persuasive", "simple"];
 
 const ACTIONS = [
@@ -39,40 +42,70 @@ const TYPE_LABELS = {
   translate:     "Translation",
 };
 
+// Returns { message, type: 'warning' | null } for inline textarea hint
+function getTextHint(text, requireMin = true) {
+  const len = text.trim().length;
+  if (text.length === 0) return null;
+  if (requireMin && len < MIN_CHARS) return { message: `${MIN_CHARS - len} more characters needed (minimum ${MIN_CHARS})`, type: "warning" };
+  if (text.length >= MAX_CHARS)      return { message: `Character limit reached (${MAX_CHARS})`, type: "error" };
+  return null;
+}
+
+// Returns an error string before making an API call, or null if OK
+function validateForSubmit(text, requireMin = true) {
+  const trimmed = text.trim();
+  if (!trimmed)                              return "The text cannot be empty.";
+  if (requireMin && trimmed.length < MIN_CHARS) return `Text is too short (${trimmed.length}/${MIN_CHARS} characters). Add a bit more content.`;
+  if (text.length > MAX_CHARS)               return `Text exceeds the ${MAX_CHARS} character limit.`;
+  return null;
+}
+
 function App() {
   const [text, setText] = useState("");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [activeType, setActiveType] = useState(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(null); // { message, type: 'error' | 'warning' }
   const [selectedTone, setSelectedTone] = useState("formal");
   const [selectedLang, setSelectedLang] = useState("en");
 
+  const showError = (message, type = "error") => setError({ message, type });
+  const clearError = () => setError(null);
+
   const handle = async (type, extra = {}) => {
-    if (!text.trim()) { setError("Please enter some text first."); return; }
-    setError(""); setResult(null); setActiveType(type); setLoading(true);
+    const err = validateForSubmit(text);
+    if (err) { showError(err, "warning"); return; }
+    clearError(); setResult(null); setActiveType(type); setLoading(true);
     try {
       const data = await analyzeText(text, type, extra);
       setResult({ type, data });
-    } catch {
-      setError("Connection error. Make sure the backend is running.");
+    } catch (e) {
+      showError(e.message);
     } finally {
       setLoading(false); setActiveType(null);
     }
   };
 
   const handleTranslate = async () => {
-    if (!text.trim()) { setError("Please enter some text first."); return; }
-    setError(""); setResult(null); setActiveType("translate"); setLoading(true);
+    const err = validateForSubmit(text, false); // translation allows short text
+    if (err) { showError(err, "warning"); return; }
+    clearError(); setResult(null); setActiveType("translate"); setLoading(true);
     try {
       const data = await translateText(text, selectedLang);
       setResult({ type: "translate", data });
-    } catch {
-      setError("Translation failed. Make sure the backend is running.");
+    } catch (e) {
+      showError(e.message);
     } finally {
       setLoading(false); setActiveType(null);
     }
   };
+
+  const hint = getTextHint(text);
+  const textareaClass = [
+    "textarea",
+    hint?.type === "error" ? "textarea-error" : "",
+    hint?.type === "warning" ? "textarea-warn" : "",
+  ].join(" ").trim();
 
   const renderResult = () => {
     if (!result) return null;
@@ -130,18 +163,29 @@ function App() {
           <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
             <p className="section-label">Input text</p>
             <textarea
-              className="textarea"
+              className={textareaClass}
               placeholder="Paste or write your text here..."
               value={text}
-              onChange={(e) => setText(e.target.value.slice(0, 500))}
-              maxLength={500}
+              onChange={(e) => { setText(e.target.value.slice(0, MAX_CHARS)); clearError(); }}
+              maxLength={MAX_CHARS}
             />
-            <p className={`char-count ${text.length >= 500 ? "char-count-limit" : ""}`}>
-              {text.length} / 500
-            </p>
+            <div className="textarea-footer">
+              {hint
+                ? <span className={`hint hint-${hint.type}`}>{hint.message}</span>
+                : <span />
+              }
+              <span className={`char-count ${text.length >= MAX_CHARS ? "char-count-limit" : ""}`}>
+                {text.length} / {MAX_CHARS}
+              </span>
+            </div>
           </div>
 
-          {error && <div className="error-msg"><span>⚠</span> {error}</div>}
+          {error && (
+            <div className={`feedback-msg feedback-${error.type}`}>
+              <span className="feedback-icon">{error.type === "warning" ? "⚠" : "✕"}</span>
+              {error.message}
+            </div>
+          )}
 
           {loading && (
             <div className="loader-wrap">
@@ -150,7 +194,7 @@ function App() {
             </div>
           )}
 
-          {result && (
+          {result && !loading && (
             <div className="result-area">
               <p className="section-label">Result</p>
               <div className="result-card">
@@ -166,7 +210,6 @@ function App() {
         {/* ── Right: controls ── */}
         <div className="right-panel">
 
-          {/* Analyze */}
           <div className="panel-section">
             <p className="section-label">Analyze</p>
             <div className="actions">
@@ -187,7 +230,6 @@ function App() {
             </div>
           </div>
 
-          {/* Tone */}
           <div className="panel-section">
             <p className="section-label">Change tone</p>
             <div className="tone-chips">
@@ -211,7 +253,6 @@ function App() {
             </button>
           </div>
 
-          {/* Translate */}
           <div className="panel-section">
             <p className="section-label">Translate</p>
             <select
