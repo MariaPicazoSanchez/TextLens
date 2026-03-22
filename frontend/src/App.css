@@ -318,7 +318,7 @@ body {
 }
 
 .upload-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.upload-icon { font-size: 14px; }
+.upload-icon { display: block; flex-shrink: 0; }
 
 .upload-hint {
   font-size: 11px;
