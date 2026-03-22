@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from typing import Optional
 from services.llm_service import (
     summarize, extract_keywords, analyze_sentiment, change_tone, answer_question,
-    summarize_stream, change_tone_stream, answer_question_stream,
+    summarize_stream, change_tone_stream, answer_question_stream, MODELS, DEFAULT_MODEL,
 )
 
 router = APIRouter()
@@ -23,6 +23,7 @@ class AnalyzeRequest(BaseModel):
     tone: Optional[str] = None
     question: Optional[str] = None
     response_lang: Optional[str] = "English"
+    model: Optional[str] = DEFAULT_MODEL
 
 
 def validate_text(text: str):
@@ -55,14 +56,15 @@ def analyze(request: AnalyzeRequest):
         raise HTTPException(400, f"Unknown analysis type '{request.type}'.")
     validate_type_extras(request)
 
-    lang = request.response_lang or "English"
+    lang  = request.response_lang or "English"
+    model = request.model if request.model in MODELS else DEFAULT_MODEL
 
-    if request.type == "summary_short":  return summarize(request.text, "short", lang)
-    if request.type == "summary_long":   return summarize(request.text, "long",  lang)
-    if request.type == "keywords":       return extract_keywords(request.text, lang)
-    if request.type == "sentiment":      return analyze_sentiment(request.text, lang)
-    if request.type == "tone":           return change_tone(request.text, request.tone, lang)
-    if request.type == "qa":             return answer_question(request.text, request.question, lang)
+    if request.type == "summary_short":  return summarize(request.text, "short", lang, model)
+    if request.type == "summary_long":   return summarize(request.text, "long",  lang, model)
+    if request.type == "keywords":       return extract_keywords(request.text, lang, model)
+    if request.type == "sentiment":      return analyze_sentiment(request.text, lang, model)
+    if request.type == "tone":           return change_tone(request.text, request.tone, lang, model)
+    if request.type == "qa":             return answer_question(request.text, request.question, lang, model)
 
 
 # ── Streaming endpoint ────────────────────────────────────────────────────────
@@ -74,16 +76,17 @@ def analyze_stream(request: AnalyzeRequest):
         raise HTTPException(400, f"Type '{request.type}' does not support streaming.")
     validate_type_extras(request)
 
-    lang = request.response_lang or "English"
+    lang  = request.response_lang or "English"
+    model = request.model if request.model in MODELS else DEFAULT_MODEL
 
     if request.type == "summary_short":
-        chunks = summarize_stream(request.text, "short", lang)
+        chunks = summarize_stream(request.text, "short", lang, model)
     elif request.type == "summary_long":
-        chunks = summarize_stream(request.text, "long", lang)
+        chunks = summarize_stream(request.text, "long", lang, model)
     elif request.type == "tone":
-        chunks = change_tone_stream(request.text, request.tone, lang)
+        chunks = change_tone_stream(request.text, request.tone, lang, model)
     elif request.type == "qa":
-        chunks = answer_question_stream(request.text, request.question, lang)
+        chunks = answer_question_stream(request.text, request.question, lang, model)
 
     def sse_generator():
         try:

@@ -11,7 +11,12 @@ if not _api_key:
     raise RuntimeError("GROQ_API_KEY is not set. Add it to your .env file.")
 
 client = Groq(api_key=_api_key)
-MODEL = "llama-3.1-8b-instant"
+
+MODELS = {
+    "fast":    "llama-3.1-8b-instant",
+    "quality": "llama-3.3-70b-versatile",
+}
+DEFAULT_MODEL = "fast"
 
 # ── Prompts ──────────────────────────────────────────────────────────────────
 
@@ -60,24 +65,24 @@ def _wrap_errors(fn):
 # ── Standard (non-streaming) ──────────────────────────────────────────────────
 
 @_wrap_errors
-def _chat(prompt: str) -> str:
+def _chat(prompt: str, model_key: str = DEFAULT_MODEL) -> str:
     response = client.chat.completions.create(
-        model=MODEL,
+        model=MODELS.get(model_key, MODELS[DEFAULT_MODEL]),
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
     )
     return response.choices[0].message.content.strip()
 
 
-def summarize(text: str, mode: str, lang: str = "English") -> dict:
-    return {"summary": _chat(_summary_prompt(text, mode, lang))}
+def summarize(text: str, mode: str, lang: str = "English", model: str = DEFAULT_MODEL) -> dict:
+    return {"summary": _chat(_summary_prompt(text, mode, lang), model)}
 
 
-def extract_keywords(text: str, lang: str = "English") -> dict:
+def extract_keywords(text: str, lang: str = "English", model: str = DEFAULT_MODEL) -> dict:
     prompt = (f"Extract the 8-10 most important keywords or key phrases from the following text. "
               f"Return ONLY a JSON array of strings, nothing else. Example: [\"keyword1\", \"keyword2\"]. "
               f"The keywords must be in {lang}.\n\n{text}")
-    raw = _chat(prompt)
+    raw = _chat(prompt, model)
     try:
         keywords = json.loads(raw[raw.index("["):raw.rindex("]") + 1])
     except (ValueError, json.JSONDecodeError):
@@ -85,14 +90,14 @@ def extract_keywords(text: str, lang: str = "English") -> dict:
     return {"keywords": keywords}
 
 
-def analyze_sentiment(text: str, lang: str = "English") -> dict:
+def analyze_sentiment(text: str, lang: str = "English", model: str = DEFAULT_MODEL) -> dict:
     prompt = (f"Analyze the sentiment of the following text. "
               f"Return ONLY a JSON object with these fields: "
               f"\"label\" (one of: Positive, Negative, Neutral, Mixed), "
               f"\"score\" (confidence from 0.0 to 1.0), "
               f"\"explanation\" (one sentence explaining why, written in {lang}). "
               f"No extra text, just the JSON.\n\n{text}")
-    raw = _chat(prompt)
+    raw = _chat(prompt, model)
     try:
         sentiment = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
     except (ValueError, json.JSONDecodeError):
@@ -100,20 +105,20 @@ def analyze_sentiment(text: str, lang: str = "English") -> dict:
     return {"sentiment": sentiment}
 
 
-def answer_question(text: str, question: str, lang: str = "English") -> dict:
-    return {"answer": _chat(_qa_prompt(text, question, lang))}
+def answer_question(text: str, question: str, lang: str = "English", model: str = DEFAULT_MODEL) -> dict:
+    return {"answer": _chat(_qa_prompt(text, question, lang), model)}
 
 
-def change_tone(text: str, tone: str, lang: str = "English") -> dict:
-    return {"rewritten": _chat(_tone_prompt(text, tone, lang))}
+def change_tone(text: str, tone: str, lang: str = "English", model: str = DEFAULT_MODEL) -> dict:
+    return {"rewritten": _chat(_tone_prompt(text, tone, lang), model)}
 
 # ── Streaming ─────────────────────────────────────────────────────────────────
 
-def _chat_stream(prompt: str):
+def _chat_stream(prompt: str, model_key: str = DEFAULT_MODEL):
     """Yields raw text chunks from Groq. Raises HTTPException on API errors."""
     try:
         stream = client.chat.completions.create(
-            model=MODEL,
+            model=MODELS.get(model_key, MODELS[DEFAULT_MODEL]),
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             stream=True,
@@ -132,13 +137,13 @@ def _chat_stream(prompt: str):
         raise HTTPException(502, f"Groq API error: {e.message}")
 
 
-def summarize_stream(text: str, mode: str, lang: str = "English"):
-    return _chat_stream(_summary_prompt(text, mode, lang))
+def summarize_stream(text: str, mode: str, lang: str = "English", model: str = DEFAULT_MODEL):
+    return _chat_stream(_summary_prompt(text, mode, lang), model)
 
 
-def change_tone_stream(text: str, tone: str, lang: str = "English"):
-    return _chat_stream(_tone_prompt(text, tone, lang))
+def change_tone_stream(text: str, tone: str, lang: str = "English", model: str = DEFAULT_MODEL):
+    return _chat_stream(_tone_prompt(text, tone, lang), model)
 
 
-def answer_question_stream(text: str, question: str, lang: str = "English"):
-    return _chat_stream(_qa_prompt(text, question, lang))
+def answer_question_stream(text: str, question: str, lang: str = "English", model: str = DEFAULT_MODEL):
+    return _chat_stream(_qa_prompt(text, question, lang), model)

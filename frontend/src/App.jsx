@@ -224,6 +224,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [activeType, setActiveType] = useState(null);
   const [error, setError] = useState(null);
+  const [selectedModel, setSelectedModel] = useState("fast");
   const [selectedTone, setSelectedTone] = useState("formal");
   const [selectedLang, setSelectedLang] = useState("en");
   const [responseLang, setResponseLang] = useState("English");
@@ -294,7 +295,7 @@ export default function App() {
       setLoading(false); setActiveType(null);
 
       streamAnalyzeText(
-        text, type, { ...extra, response_lang: responseLang },
+        text, type, { ...extra, response_lang: responseLang, model: selectedModel },
         {
           onChunk: (chunk) =>
             setHistory(prev => prev.map(item =>
@@ -314,7 +315,7 @@ export default function App() {
       );
     } else {
       try {
-        const data = await analyzeText(text, type, { ...extra, response_lang: responseLang });
+        const data = await analyzeText(text, type, { ...extra, response_lang: responseLang, model: selectedModel });
         pushResult({ type, data, question: extra.question, tone: extra.tone, originalText: text });
       } catch (e) {
         showError(e.message);
@@ -435,6 +436,28 @@ export default function App() {
 
         {/* ── Right panel ── */}
         <div className="right-panel">
+
+          <div className="panel-section">
+            <p className="section-label">{tr("modelLabel")}</p>
+            <div className="model-chips">
+              <button
+                className={`model-chip ${selectedModel === "fast" ? "selected" : ""}`}
+                onClick={() => setSelectedModel("fast")}
+                disabled={loading}
+              >
+                <span className="model-chip-name">⚡ {tr("modelFast")}</span>
+                <span className="model-chip-desc">{tr("modelFastDesc")}</span>
+              </button>
+              <button
+                className={`model-chip ${selectedModel === "quality" ? "selected" : ""}`}
+                onClick={() => setSelectedModel("quality")}
+                disabled={loading}
+              >
+                <span className="model-chip-name">✨ {tr("modelQuality")}</span>
+                <span className="model-chip-desc">{tr("modelQualityDesc")}</span>
+              </button>
+            </div>
+          </div>
 
           <div className="panel-section">
             <p className="section-label">{tr("responseLanguage")}</p>
