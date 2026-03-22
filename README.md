@@ -1,9 +1,5 @@
 # TextLens
 
-> AI-powered text analysis web application — summarize, classify, rewrite, translate, and extract insights from any text in seconds.
-
----
-
 ## Overview
 
 TextLens is a full-stack web application that leverages the **Groq API** (Llama 3.1 / 3.3) to perform a wide range of AI-driven text operations through a clean, responsive dark-theme interface. Responses stream token-by-token in real time. The UI is fully localized in **16 languages**.
