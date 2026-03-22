@@ -440,8 +440,10 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <div className="header-logo">🔍</div>
-        <h1>TextLens</h1>
+        <div className="header-logo">
+          <img src="/icono.ico" alt="TextLens" width="22" height="22" />
+        </div>
+        <h1>Text<span className="header-title-accent">Lens</span></h1>
         <span className="header-subtitle">{tr("poweredBy")}</span>
       </header>
 
