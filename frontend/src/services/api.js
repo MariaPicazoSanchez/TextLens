@@ -1,5 +1,8 @@
 const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
 
+// Wake up the backend on load (Render free plan sleeps after inactivity)
+fetch(`${API_URL}/ping`).catch(() => {});
+
 const HTTP_ERRORS = {
   401: "Invalid API key. Check the GROQ_API_KEY in your .env file.",
   429: "Too many requests. Wait a moment and try again.",
