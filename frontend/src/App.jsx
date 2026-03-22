@@ -54,6 +54,33 @@ const TYPE_ICONS = {
   qa:            "❓",
 };
 
+function computeStats(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return { words: 0, sentences: 0, paragraphs: 0, readTime: "—" };
+  const words      = trimmed.split(/\s+/).length;
+  const sentences  = (trimmed.match(/[^.!?]*[.!?]+/g) ?? []).length || (trimmed.length > 0 ? 1 : 0);
+  const paragraphs = trimmed.split(/\n{2,}/).filter(Boolean).length || 1;
+  const mins       = words / 200;
+  const readTime   = mins < 1 ? `${Math.round(mins * 60)}s` : `${Math.ceil(mins)}m`;
+  return { words, sentences, paragraphs, readTime };
+}
+
+function TextStats({ text }) {
+  const { words, sentences, paragraphs, readTime } = computeStats(text);
+  const hasText = text.trim().length > 0;
+  return (
+    <div className={`text-stats ${hasText ? "text-stats-active" : ""}`}>
+      <span className="stat-item"><span className="stat-value">{words}</span> words</span>
+      <span className="stat-sep" />
+      <span className="stat-item"><span className="stat-value">{sentences}</span> sentences</span>
+      <span className="stat-sep" />
+      <span className="stat-item"><span className="stat-value">{paragraphs}</span> {paragraphs === 1 ? "paragraph" : "paragraphs"}</span>
+      <span className="stat-sep" />
+      <span className="stat-item"><span className="stat-value">{readTime}</span> read</span>
+    </div>
+  );
+}
+
 function getTextHint(text) {
   const len = text.trim().length;
   if (text.length === 0) return null;
@@ -269,6 +296,7 @@ export default function App() {
                 {text.length} / {MAX_CHARS}
               </span>
             </div>
+            <TextStats text={text} />
           </div>
 
           {/* Feedback */}
