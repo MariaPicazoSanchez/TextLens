@@ -177,3 +177,64 @@ def change_tone_stream(text: str, tone: str, lang: str = "English", model: str =
 
 def answer_question_stream(text: str, question: str, lang: str = "English", model: str = DEFAULT_MODEL):
     return _chat_stream(_qa_prompt(text, question, lang), model)
+
+
+# ── Language detection ────────────────────────────────────────────────────────
+
+def _detect_prompt(text: str) -> str:
+    return (f"What language is the following text written in? "
+            f"Reply with ONLY the language name in English (e.g. 'Spanish', 'French', 'Japanese'). "
+            f"No extra text, punctuation, or explanation.\n\n{text[:300]}")
+
+
+@_wrap_errors
+def detect_language(text: str) -> dict:
+    result = _chat(_detect_prompt(text), DEFAULT_MODEL)
+    return {"language": result.strip().split("\n")[0].strip()}
+
+
+# ── Compare ───────────────────────────────────────────────────────────────────
+
+def _compare_prompt(text1: str, text2: str, lang: str) -> str:
+    return (f"Compare the following two texts. Analyze their similarities and differences "
+            f"in terms of content, tone, style, and key points. "
+            f"Structure your response with clear sections (Similarities, Differences, Summary). "
+            f"Reply only with the comparison, no extra preamble. Respond in {lang}.\n\n"
+            f"Text 1:\n{text1}\n\nText 2:\n{text2}")
+
+
+def compare_stream(text1: str, text2: str, lang: str = "English", model: str = DEFAULT_MODEL):
+    return _chat_stream(_compare_prompt(text1, text2, lang), model)
+
+
+# ── Chat ──────────────────────────────────────────────────────────────────────
+
+def _chat_messages_stream(messages: list, model_key: str = DEFAULT_MODEL):
+    """Yields raw text chunks from Groq using a full messages list."""
+    try:
+        stream = client.chat.completions.create(
+            model=MODELS.get(model_key, MODELS[DEFAULT_MODEL]),
+            messages=messages,
+            temperature=0.5,
+            stream=True,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
+    except AuthenticationError:
+        raise HTTPException(401, "Invalid or missing Groq API key. Check your .env file.")
+    except RateLimitError:
+        raise HTTPException(429, "Groq rate limit reached. Wait a moment and try again.")
+    except APIConnectionError:
+        raise HTTPException(503, "Could not connect to Groq API. Check your internet connection.")
+    except APIStatusError as e:
+        raise HTTPException(502, f"Groq API error: {e.message}")
+
+
+def chat_stream(context: str, messages: list, lang: str = "English", model: str = DEFAULT_MODEL):
+    system_msg = (f"You are a helpful assistant. Answer questions based exclusively on the provided text context. "
+                  f"If the answer cannot be found in the context, say so clearly. "
+                  f"Be concise and helpful. Respond in {lang}.\n\nContext:\n{context}")
+    full_messages = [{"role": "system", "content": system_msg}] + messages
+    return _chat_messages_stream(full_messages, model)

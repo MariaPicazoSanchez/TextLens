@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { analyzeText, translateText, streamAnalyzeText, uploadFile } from "./services/api";
+import { analyzeText, translateText, streamAnalyzeText, uploadFile, detectLanguage, streamCompare, streamChat } from "./services/api";
 import { t } from "./i18n";
 import "./App.css";
 
@@ -64,7 +64,7 @@ function getTypeLabel(type, tr) {
   return tr(map[type] ?? type);
 }
 
-const STREAM_TYPES = new Set(["summary_short", "summary_long", "tone", "qa"]);
+const STREAM_TYPES = new Set(["summary_short", "summary_long", "tone", "qa", "improve"]);
 
 function dataKey(type) {
   if (type === "tone" || type === "improve") return "rewritten";
@@ -109,7 +109,7 @@ function fleschLabel(score, tr) {
   return               { label: tr("readVeryHard"),   cls: "flesch-hard" };
 }
 
-function TextStats({ text, tr }) {
+function TextStats({ text, tr, detectedLang, detectingLang }) {
   const { words, sentences, paragraphs, readTime, flesch } = computeStats(text);
   const hasText = text.trim().length > 0;
   const fl = fleschLabel(flesch, tr);
@@ -128,6 +128,14 @@ function TextStats({ text, tr }) {
           <span className="stat-value">{flesch}</span>
           <span className={`flesch-badge ${fl.cls}`}>{fl.label}</span>
         </span>
+      </>}
+      {detectingLang && <>
+        <span className="stat-sep" />
+        <span className={`lang-detect-badge detecting`}>{tr("detectingLang")}</span>
+      </>}
+      {!detectingLang && detectedLang && <>
+        <span className="stat-sep" />
+        <span className="lang-detect-badge">{tr("detectedLang", detectedLang)}</span>
       </>}
     </div>
   );
@@ -289,6 +297,27 @@ export default function App() {
   const historyBottomRef = useRef(null);
   const isFirstLangRender = useRef(true);
 
+  // Right panel tabs
+  const [rightTab, setRightTab] = useState("tools");
+
+  // Language detection
+  const [detectedLang, setDetectedLang] = useState(null);
+  const [detectingLang, setDetectingLang] = useState(false);
+  const detectDebounceRef = useRef(null);
+
+  // Compare
+  const [compareText2, setCompareText2] = useState("");
+  const [compareResult, setCompareResult] = useState(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const compareAbortRef = useRef(null);
+
+  // Chat
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatAbortRef = useRef(null);
+  const chatBottomRef = useRef(null);
+
   const tr = (key, ...args) => t(key, responseLang, ...args);
 
   // Scroll to newest result
@@ -297,6 +326,26 @@ export default function App() {
       historyBottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [history.length]);
+
+  // Language detection (debounced, triggers after 2s when text > 30 chars)
+  useEffect(() => {
+    clearTimeout(detectDebounceRef.current);
+    if (text.trim().length < 30) { setDetectedLang(null); setDetectingLang(false); return; }
+    setDetectingLang(true);
+    detectDebounceRef.current = setTimeout(async () => {
+      try {
+        const { language } = await detectLanguage(text);
+        setDetectedLang(language);
+      } catch { /* silent */ }
+      setDetectingLang(false);
+    }, 2000);
+    return () => clearTimeout(detectDebounceRef.current);
+  }, [text]);
+
+  // Scroll chat to bottom when messages change
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages.length]);
 
   // Re-run all history items when response language changes
   useEffect(() => {
@@ -330,6 +379,77 @@ export default function App() {
 
   const removeItem = (id) => setHistory((prev) => prev.filter((i) => i.id !== id));
   const clearHistory = () => setHistory([]);
+
+  const exportHistory = () => {
+    if (history.length === 0) return;
+    const lines = history.map((item) => {
+      const label = getTypeLabel(item.type, tr);
+      const time = formatTime(item.timestamp);
+      const body = getPlainText(item);
+      return `[${time}] ${label}\n${body}\n`;
+    });
+    const blob = new Blob([lines.join("\n---\n\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "textlens-history.txt"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCompare = () => {
+    const err = validateForSubmit(text, tr);
+    if (err) { showError(err, "warning"); return; }
+    if (compareText2.trim().length < MIN_CHARS) {
+      showError(tr("errTooShort", compareText2.trim().length, MIN_CHARS), "warning");
+      return;
+    }
+    clearError();
+    if (compareAbortRef.current) compareAbortRef.current();
+    setCompareResult("");
+    setCompareLoading(true);
+    compareAbortRef.current = streamCompare(
+      text, compareText2,
+      { response_lang: responseLang, model: selectedModel },
+      {
+        onChunk: (chunk) => setCompareResult((prev) => prev + chunk),
+        onDone: () => { setCompareLoading(false); compareAbortRef.current = null; },
+        onError: (msg) => { setCompareLoading(false); setCompareResult(null); showError(msg); },
+      }
+    );
+  };
+
+  const handleChat = () => {
+    if (!chatInput.trim() || chatLoading) return;
+    if (text.trim().length < MIN_CHARS) {
+      showError(tr("chatNoContext"), "warning");
+      return;
+    }
+    const userMsg = { role: "user", content: chatInput.trim() };
+    const messagesForApi = [...chatMessages, userMsg];
+    setChatMessages([...messagesForApi, { role: "assistant", content: "" }]);
+    setChatInput("");
+    setChatLoading(true);
+    chatAbortRef.current = streamChat(
+      text, messagesForApi,
+      { response_lang: responseLang, model: selectedModel },
+      {
+        onChunk: (chunk) =>
+          setChatMessages((prev) => {
+            const updated = [...prev];
+            updated[updated.length - 1] = {
+              ...updated[updated.length - 1],
+              content: updated[updated.length - 1].content + chunk,
+            };
+            return updated;
+          }),
+        onDone: () => { setChatLoading(false); chatAbortRef.current = null; },
+        onError: (msg) => {
+          setChatLoading(false);
+          setChatMessages((prev) => prev.slice(0, -1));
+          showError(msg);
+        },
+      }
+    );
+  };
 
   const handleFileUpload = async (file) => {
     if (!file) return;
@@ -460,6 +580,7 @@ export default function App() {
               value={text}
               onChange={(e) => { setText(e.target.value.slice(0, MAX_CHARS)); clearError(); }}
               maxLength={MAX_CHARS}
+              spellCheck={true}
               onPaste={(e) => {
                 const imageItem = [...(e.clipboardData?.items ?? [])].find(
                   (item) => item.kind === "file" && item.type.startsWith("image/")
@@ -479,7 +600,7 @@ export default function App() {
                 {text.length} / {MAX_CHARS}
               </span>
             </div>
-            <TextStats text={text} tr={tr} />
+            <TextStats text={text} tr={tr} detectedLang={detectedLang} detectingLang={detectingLang} />
 
             <div className="upload-row">
               <input
@@ -518,7 +639,10 @@ export default function App() {
                 <p className="section-label" style={{ margin: 0 }}>
                   {tr("results")} · {history.length}
                 </p>
-                <button className="clear-btn" onClick={clearHistory}>{tr("clearAll")}</button>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  <button className="export-btn" onClick={exportHistory} title={tr("exportHistory")}>⬇ {tr("exportHistory")}</button>
+                  <button className="clear-btn" onClick={clearHistory}>{tr("clearAll")}</button>
+                </div>
               </div>
             )}
 
@@ -550,135 +674,198 @@ export default function App() {
         </div>
 
         {/* ── Right panel ── */}
-        <div className="right-panel">
+        <div className={`right-panel ${rightTab === "chat" ? "right-panel-chat" : ""}`}>
 
-          <div className="panel-section">
-            <p className="section-label">{tr("modelLabel")}</p>
-            <div className="model-chips">
-              <button
-                className={`model-chip ${selectedModel === "fast" ? "selected" : ""}`}
-                onClick={() => setSelectedModel("fast")}
-                disabled={loading}
-              >
-                <span className="model-chip-name">⚡ {tr("modelFast")}</span>
-                <span className="model-chip-desc">{tr("modelFastDesc")}</span>
-              </button>
-              <button
-                className={`model-chip ${selectedModel === "quality" ? "selected" : ""}`}
-                onClick={() => setSelectedModel("quality")}
-                disabled={loading}
-              >
-                <span className="model-chip-name">✨ {tr("modelQuality")}</span>
-                <span className="model-chip-desc">{tr("modelQualityDesc")}</span>
-              </button>
-            </div>
+          {/* Tab bar */}
+          <div className="panel-tabs">
+            <button className={`panel-tab ${rightTab === "tools" ? "panel-tab-active" : ""}`} onClick={() => setRightTab("tools")}>{tr("tabTools")}</button>
+            <button className={`panel-tab ${rightTab === "compare" ? "panel-tab-active" : ""}`} onClick={() => setRightTab("compare")}>{tr("tabCompare")}</button>
+            <button className={`panel-tab ${rightTab === "chat" ? "panel-tab-active" : ""}`} onClick={() => setRightTab("chat")}>{tr("tabChat")}</button>
           </div>
 
-          <div className="panel-section">
-            <p className="section-label">{tr("responseLanguage")}</p>
-            <select
-              className="lang-select"
-              value={responseLang}
-              onChange={(e) => setResponseLang(e.target.value)}
-              disabled={loading}
-            >
-              {LANGUAGES.map(({ code, label }) => (
-                <option key={label} value={label}>{tr("langNames")?.[code] ?? label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="panel-section">
-            <p className="section-label">{tr("analyze")}</p>
-            <div className="actions">
-              {ACTIONS.map(({ type, icon, titleKey, descKey }) => (
+          {/* ── Tools tab ── */}
+          {rightTab === "tools" && <>
+            <div className="panel-section">
+              <p className="section-label">{tr("modelLabel")}</p>
+              <div className="model-chips">
                 <button
-                  key={type}
-                  className={`action-btn ${activeType === type ? "active" : ""}`}
-                  onClick={() => handle(type)}
+                  className={`model-chip ${selectedModel === "fast" ? "selected" : ""}`}
+                  onClick={() => setSelectedModel("fast")}
                   disabled={loading}
                 >
-                  <span className="btn-icon">{icon}</span>
-                  <span className="btn-text">
-                    <span className="btn-title">{tr(titleKey)}</span>
-                    <span className="btn-desc">{tr(descKey)}</span>
-                  </span>
+                  <span className="model-chip-name">⚡ {tr("modelFast")}</span>
+                  <span className="model-chip-desc">{tr("modelFastDesc")}</span>
                 </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="panel-section">
-            <p className="section-label">{tr("changeTone")}</p>
-            <div className="tone-chips">
-              {TONES.map((tone) => (
                 <button
-                  key={tone}
-                  className={`tone-chip ${selectedTone === tone ? "selected" : ""}`}
-                  onClick={() => setSelectedTone(tone)}
+                  className={`model-chip ${selectedModel === "quality" ? "selected" : ""}`}
+                  onClick={() => setSelectedModel("quality")}
                   disabled={loading}
                 >
-                  {tr("tones")?.[tone] ?? tone.charAt(0).toUpperCase() + tone.slice(1)}
+                  <span className="model-chip-name">✨ {tr("modelQuality")}</span>
+                  <span className="model-chip-desc">{tr("modelQualityDesc")}</span>
                 </button>
-              ))}
+              </div>
             </div>
-            <button
-              className="run-btn indigo"
-              onClick={() => handle("tone", { tone: selectedTone })}
-              disabled={loading}
-            >
-              {tr("rewriteBtn", selectedToneLabel)}
-            </button>
-          </div>
 
-          <div className="panel-section">
-            <p className="section-label">{tr("askQuestion")}</p>
-            <input
-              className="question-input"
-              type="text"
-              placeholder={tr("questionPlaceholder")}
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !loading) {
-                  if (!question.trim()) { showError(tr("errNoQuestion"), "warning"); return; }
-                  handle("qa", { question });
-                }
-              }}
-              disabled={loading}
-            />
-            <button
-              className="run-btn purple"
-              onClick={() => {
-                if (!question.trim()) { showError(tr("errNoQuestion"), "warning"); return; }
-                handle("qa", { question });
-              }}
-              disabled={loading}
-            >
-              {tr("askBtn")}
-            </button>
-          </div>
+            <div className="panel-section">
+              <p className="section-label">{tr("responseLanguage")}</p>
+              <select
+                className="lang-select"
+                value={responseLang}
+                onChange={(e) => setResponseLang(e.target.value)}
+                disabled={loading}
+              >
+                {LANGUAGES.map(({ code, label }) => (
+                  <option key={label} value={label}>{tr("langNames")?.[code] ?? label}</option>
+                ))}
+              </select>
+            </div>
 
-          <div className="panel-section">
-            <p className="section-label">{tr("translate")}</p>
-            <select
-              className="lang-select"
-              value={selectedLang}
-              onChange={(e) => setSelectedLang(e.target.value)}
-              disabled={loading}
-            >
-              {LANGUAGES.map(({ code, label }) => (
-                <option key={code} value={code}>{tr("langNames")?.[code] ?? label}</option>
-              ))}
-            </select>
-            <button
-              className="run-btn cyan"
-              onClick={handleTranslate}
-              disabled={loading}
-            >
-              {tr("translateBtn", selectedLangLabel)}
-            </button>
-          </div>
+            <div className="panel-section">
+              <p className="section-label">{tr("analyze")}</p>
+              <div className="actions">
+                {ACTIONS.map(({ type, icon, titleKey, descKey }) => (
+                  <button
+                    key={type}
+                    className={`action-btn ${activeType === type ? "active" : ""}`}
+                    onClick={() => handle(type)}
+                    disabled={loading}
+                  >
+                    <span className="btn-icon">{icon}</span>
+                    <span className="btn-text">
+                      <span className="btn-title">{tr(titleKey)}</span>
+                      <span className="btn-desc">{tr(descKey)}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="panel-section">
+              <p className="section-label">{tr("changeTone")}</p>
+              <div className="tone-chips">
+                {TONES.map((tone) => (
+                  <button
+                    key={tone}
+                    className={`tone-chip ${selectedTone === tone ? "selected" : ""}`}
+                    onClick={() => setSelectedTone(tone)}
+                    disabled={loading}
+                  >
+                    {tr("tones")?.[tone] ?? tone.charAt(0).toUpperCase() + tone.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <button
+                className="run-btn indigo"
+                onClick={() => handle("tone", { tone: selectedTone })}
+                disabled={loading}
+              >
+                {tr("rewriteBtn", selectedToneLabel)}
+              </button>
+            </div>
+
+            <div className="panel-section">
+              <p className="section-label">{tr("translate")}</p>
+              <select
+                className="lang-select"
+                value={selectedLang}
+                onChange={(e) => setSelectedLang(e.target.value)}
+                disabled={loading}
+              >
+                {LANGUAGES.map(({ code, label }) => (
+                  <option key={code} value={code}>{tr("langNames")?.[code] ?? label}</option>
+                ))}
+              </select>
+              <button
+                className="run-btn cyan"
+                onClick={handleTranslate}
+                disabled={loading}
+              >
+                {tr("translateBtn", selectedLangLabel)}
+              </button>
+            </div>
+          </>}
+
+          {/* ── Compare tab ── */}
+          {rightTab === "compare" && (
+            <div className="compare-panel">
+              <div className="panel-section" style={{ flex: "none" }}>
+                <p className={`chat-context-note ${text.trim().length >= MIN_CHARS ? "chat-context-ok" : "chat-context-warn"}`}>
+                  {text.trim().length >= MIN_CHARS ? `✓ ${tr("compareText1Label")}: ${tr("chatContextNote")}` : `⚠ ${tr("chatNoContext")}`}
+                </p>
+                <div className="compare-textarea-wrap" style={{ marginBottom: "12px" }}>
+                  <label className="compare-label">{tr("compareText2Label")}</label>
+                  <textarea
+                    className="compare-textarea"
+                    placeholder={tr("inputPlaceholder")}
+                    value={compareText2}
+                    onChange={(e) => setCompareText2(e.target.value.slice(0, MAX_CHARS))}
+                    disabled={compareLoading}
+                  />
+                  <span className="compare-charcount">{compareText2.length}/{MAX_CHARS}</span>
+                </div>
+                <button className="run-btn indigo" onClick={handleCompare} disabled={compareLoading}>
+                  {compareLoading ? tr("comparing") : tr("compareBtn")}
+                </button>
+              </div>
+              {compareResult !== null && (
+                <div className="panel-section" style={{ flex: "1", overflow: "auto" }}>
+                  <p className="compare-result">
+                    {compareResult}
+                    {compareLoading && <span className="stream-cursor" />}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Chat tab ── */}
+          {rightTab === "chat" && (
+            <div className="chat-panel">
+              <p className={`chat-context-note ${text.trim().length >= MIN_CHARS ? "chat-context-ok" : "chat-context-warn"}`}>
+                {text.trim().length >= MIN_CHARS ? `✓ ${tr("chatContextNote")}` : `⚠ ${tr("chatNoContext")}`}
+              </p>
+              <div className="chat-messages">
+                {chatMessages.length === 0 && (
+                  <p className="chat-empty">{tr("chatPlaceholder")}</p>
+                )}
+                {chatMessages.map((msg, i) => (
+                  <div key={i} className={`chat-bubble chat-bubble-${msg.role}`}>
+                    <p className="chat-bubble-text">
+                      {msg.content || (msg.role === "assistant" && chatLoading && i === chatMessages.length - 1
+                        ? <span className="chat-typing">{tr("chatTyping")}</span>
+                        : null)}
+                      {msg.role === "assistant" && msg.content && chatLoading && i === chatMessages.length - 1 && <span className="stream-cursor" />}
+                    </p>
+                  </div>
+                ))}
+                <div ref={chatBottomRef} />
+              </div>
+              <div className="chat-input-row">
+                <input
+                  className="chat-input"
+                  type="text"
+                  placeholder={tr("chatPlaceholder")}
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleChat(); }}
+                  disabled={chatLoading}
+                />
+                <button className="chat-send-btn" onClick={handleChat} disabled={chatLoading || !chatInput.trim()}>
+                  {tr("chatSendBtn")}
+                </button>
+              </div>
+              {chatMessages.length > 0 && (
+                <button className="clear-btn" style={{ marginTop: "4px" }} onClick={() => {
+                  if (chatAbortRef.current) chatAbortRef.current();
+                  setChatMessages([]);
+                  setChatLoading(false);
+                }}>
+                  {tr("chatClearBtn")}
+                </button>
+              )}
+            </div>
+          )}
 
         </div>
       </div>
