@@ -24,13 +24,19 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
 
       - name: Check app loads correctly
         working-directory: backend
         env:
           GROQ_API_KEY: ci-dummy-key
         run: python -c "import main; print('Backend OK — all routes loaded')"
+
+      - name: Run tests
+        working-directory: backend
+        env:
+          GROQ_API_KEY: ci-dummy-key
+        run: pytest --tb=short -q
 
   frontend:
     name: Frontend - install & build
