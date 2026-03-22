@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { analyzeText, translateText } from "./services/api";
+import { analyzeText, translateText, streamAnalyzeText } from "./services/api";
 import "./App.css";
 
 const MIN_CHARS = 15;
@@ -53,6 +53,14 @@ const TYPE_ICONS = {
   translate:     "🌐",
   qa:            "❓",
 };
+
+const STREAM_TYPES = new Set(["summary_short", "summary_long", "tone", "qa"]);
+
+function dataKey(type) {
+  if (type === "tone") return "rewritten";
+  if (type === "qa")   return "answer";
+  return "summary";
+}
 
 function computeStats(text) {
   const trimmed = text.trim();
@@ -117,10 +125,15 @@ function getPlainText(item) {
 
 // ── Result body renderer (shared between history items) ──
 function ResultBody({ item }) {
-  const { type, data } = item;
+  const { type, data, streaming } = item;
 
   if (type === "summary_short" || type === "summary_long" || type === "tone") {
-    return <p className="result-text">{data.summary ?? data.rewritten}</p>;
+    return (
+      <p className="result-text">
+        {data.summary ?? data.rewritten}
+        {streaming && <span className="stream-cursor" />}
+      </p>
+    );
   }
   if (type === "translate") {
     return (
@@ -141,7 +154,10 @@ function ResultBody({ item }) {
     return (
       <div className="qa-wrap">
         <p className="qa-question">❓ {item.question}</p>
-        <p className="result-text">{data.answer}</p>
+        <p className="result-text">
+          {data.answer}
+          {streaming && <span className="stream-cursor" />}
+        </p>
       </div>
     );
   }
@@ -229,13 +245,50 @@ export default function App() {
     const err = validateForSubmit(text);
     if (err) { showError(err, "warning"); return; }
     clearError(); setActiveType(type); setLoading(true);
-    try {
-      const data = await analyzeText(text, type, { ...extra, response_lang: responseLang });
-      pushResult({ type, data, question: extra.question });
-    } catch (e) {
-      showError(e.message);
-    } finally {
+
+    if (STREAM_TYPES.has(type)) {
+      const id  = Date.now();
+      const key = dataKey(type);
+
+      // Push placeholder immediately so the card appears
+      setHistory(prev => [...prev, {
+        id, type, data: { [key]: "" },
+        question: extra.question,
+        timestamp: new Date(),
+        streaming: true,
+      }]);
+
+      // Re-enable buttons — streaming continues on the card itself
       setLoading(false); setActiveType(null);
+
+      streamAnalyzeText(
+        text, type, { ...extra, response_lang: responseLang },
+        {
+          onChunk: (chunk) =>
+            setHistory(prev => prev.map(item =>
+              item.id === id
+                ? { ...item, data: { ...item.data, [key]: item.data[key] + chunk } }
+                : item
+            )),
+          onDone: () =>
+            setHistory(prev => prev.map(item =>
+              item.id === id ? { ...item, streaming: false } : item
+            )),
+          onError: (msg) => {
+            setHistory(prev => prev.filter(item => item.id !== id));
+            showError(msg);
+          },
+        }
+      );
+    } else {
+      try {
+        const data = await analyzeText(text, type, { ...extra, response_lang: responseLang });
+        pushResult({ type, data, question: extra.question });
+      } catch (e) {
+        showError(e.message);
+      } finally {
+        setLoading(false); setActiveType(null);
+      }
     }
   };
 

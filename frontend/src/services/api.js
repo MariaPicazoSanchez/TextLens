@@ -36,3 +36,63 @@ export function analyzeText(text, type, extra = {}) {
 export function translateText(text, to_lang, from_lang = "auto") {
   return request("/translate", { text, to_lang, from_lang });
 }
+
+/**
+ * Streams an analysis response via SSE.
+ * Calls onChunk(str) for each token, onDone() when finished, onError(msg) on failure.
+ * Returns an abort function () => void.
+ */
+export function streamAnalyzeText(text, type, extra, { onChunk, onDone, onError }) {
+  const controller = new AbortController();
+
+  (async () => {
+    let response;
+    try {
+      response = await fetch(`${API_URL}/analyze/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, type, ...extra }),
+        signal: controller.signal,
+      });
+    } catch (e) {
+      if (e.name !== "AbortError")
+        onError("Cannot reach the server. Is the backend running on port 8000?");
+      return;
+    }
+
+    if (!response.ok) {
+      const known = HTTP_ERRORS[response.status];
+      if (known) { onError(known); return; }
+      const data = await response.json().catch(() => ({}));
+      onError(data.detail || `Unexpected error (${response.status}).`);
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop(); // keep last incomplete line
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const payload = line.slice(6).trim();
+        if (payload === "[DONE]") { onDone(); return; }
+        try {
+          const parsed = JSON.parse(payload);
+          if (parsed.error) { onError(parsed.error); return; }
+          if (parsed.chunk) onChunk(parsed.chunk);
+        } catch { /* ignore malformed lines */ }
+      }
+    }
+    onDone();
+  })();
+
+  return () => controller.abort();
+}

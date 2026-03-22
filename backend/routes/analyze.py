@@ -1,14 +1,20 @@
+import json
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
-from services.llm_service import summarize, extract_keywords, analyze_sentiment, change_tone, answer_question
+from services.llm_service import (
+    summarize, extract_keywords, analyze_sentiment, change_tone, answer_question,
+    summarize_stream, change_tone_stream, answer_question_stream,
+)
 
 router = APIRouter()
 
 MIN_CHARS = 15
 MAX_CHARS = 3000
-VALID_TYPES = {"summary_short", "summary_long", "keywords", "sentiment", "tone", "qa"}
-VALID_TONES = {"formal", "casual", "positive", "negative", "persuasive", "simple"}
+VALID_TYPES  = {"summary_short", "summary_long", "keywords", "sentiment", "tone", "qa"}
+STREAM_TYPES = {"summary_short", "summary_long", "tone", "qa"}
+VALID_TONES  = {"formal", "casual", "positive", "negative", "persuasive", "simple"}
 
 
 class AnalyzeRequest(BaseModel):
@@ -22,45 +28,74 @@ class AnalyzeRequest(BaseModel):
 def validate_text(text: str):
     stripped = text.strip()
     if not stripped:
-        raise HTTPException(status_code=400, detail="The text cannot be empty.")
+        raise HTTPException(400, "The text cannot be empty.")
     if len(stripped) < MIN_CHARS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Text is too short ({len(stripped)} characters). Minimum is {MIN_CHARS}."
-        )
+        raise HTTPException(400, f"Text is too short ({len(stripped)} characters). Minimum is {MIN_CHARS}.")
     if len(text) > MAX_CHARS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Text is too long ({len(text)} characters). Maximum is {MAX_CHARS}."
-        )
+        raise HTTPException(400, f"Text is too long ({len(text)} characters). Maximum is {MAX_CHARS}.")
 
+
+def validate_type_extras(request: AnalyzeRequest):
+    if request.type == "tone":
+        if not request.tone:
+            raise HTTPException(400, "A tone must be selected for this operation.")
+        if request.tone not in VALID_TONES:
+            raise HTTPException(400, f"Invalid tone '{request.tone}'. Valid options: {', '.join(VALID_TONES)}.")
+    if request.type == "qa":
+        if not request.question or not request.question.strip():
+            raise HTTPException(400, "A question is required for Q&A.")
+
+
+# ── Standard endpoint ─────────────────────────────────────────────────────────
 
 @router.post("/analyze")
 def analyze(request: AnalyzeRequest):
     validate_text(request.text)
-
     if request.type not in VALID_TYPES:
-        raise HTTPException(status_code=400, detail=f"Unknown analysis type '{request.type}'.")
+        raise HTTPException(400, f"Unknown analysis type '{request.type}'.")
+    validate_type_extras(request)
 
     lang = request.response_lang or "English"
 
-    if request.type == "tone":
-        if not request.tone:
-            raise HTTPException(status_code=400, detail="A tone must be selected for this operation.")
-        if request.tone not in VALID_TONES:
-            raise HTTPException(status_code=400, detail=f"Invalid tone '{request.tone}'. Valid options: {', '.join(VALID_TONES)}.")
-        return change_tone(request.text, request.tone, lang)
+    if request.type == "summary_short":  return summarize(request.text, "short", lang)
+    if request.type == "summary_long":   return summarize(request.text, "long",  lang)
+    if request.type == "keywords":       return extract_keywords(request.text, lang)
+    if request.type == "sentiment":      return analyze_sentiment(request.text, lang)
+    if request.type == "tone":           return change_tone(request.text, request.tone, lang)
+    if request.type == "qa":             return answer_question(request.text, request.question, lang)
+
+
+# ── Streaming endpoint ────────────────────────────────────────────────────────
+
+@router.post("/analyze/stream")
+def analyze_stream(request: AnalyzeRequest):
+    validate_text(request.text)
+    if request.type not in STREAM_TYPES:
+        raise HTTPException(400, f"Type '{request.type}' does not support streaming.")
+    validate_type_extras(request)
+
+    lang = request.response_lang or "English"
 
     if request.type == "summary_short":
-        return summarize(request.text, "short", lang)
-    if request.type == "summary_long":
-        return summarize(request.text, "long", lang)
-    if request.type == "keywords":
-        return extract_keywords(request.text, lang)
-    if request.type == "sentiment":
-        return analyze_sentiment(request.text, lang)
+        chunks = summarize_stream(request.text, "short", lang)
+    elif request.type == "summary_long":
+        chunks = summarize_stream(request.text, "long", lang)
+    elif request.type == "tone":
+        chunks = change_tone_stream(request.text, request.tone, lang)
+    elif request.type == "qa":
+        chunks = answer_question_stream(request.text, request.question, lang)
 
-    if request.type == "qa":
-        if not request.question or not request.question.strip():
-            raise HTTPException(status_code=400, detail="A question is required for Q&A.")
-        return answer_question(request.text, request.question, lang)
+    def sse_generator():
+        try:
+            for chunk in chunks:
+                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        sse_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

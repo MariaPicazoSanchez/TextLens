@@ -307,6 +307,23 @@ body {
   flex-shrink: 0;
 }
 
+/* ── Streaming cursor ── */
+.stream-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: #6366f1;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  animation: blink 0.6s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
 /* ── History section ── */
 .history-section {
   flex: 1;
