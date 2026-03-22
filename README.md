@@ -85,6 +85,7 @@ TextLens/
             └── api.js         # Fetch calls to backend
 ```
 
+
 ## API
 
 ### `POST /analyze`
@@ -94,3 +95,21 @@ TextLens/
 | `text` | string | The text to analyze |
 | `type` | string | One of: `summary_short`, `summary_long`, `keywords`, `sentiment`, `tone` |
 | `tone` | string | Required when `type` is `tone`. One of: `formal`, `casual`, `positive`, `negative`, `persuasive`, `simple` |
+
+### `POST /translate`
+
+Traduce un texto a otro idioma usando la librería translate de Python (no IA).
+
+| Field      | Type   | Description                                      |
+|-----------|--------|--------------------------------------------------|
+| `text`    | string | Texto a traducir                                 |
+| `to_lang` | string | Idioma destino (ej: `es`, `en`, `fr`). Default: `es` |
+| `from_lang` | string | Idioma origen (ej: `en`, `auto`). Default: `auto`   |
+
+**Respuesta:**
+
+```json
+{
+    "translation": "Texto traducido aquí"
+}
+```
