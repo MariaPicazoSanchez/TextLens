@@ -93,30 +93,31 @@ def _category(path: str) -> str | None:
     return None
 
 
-class RateLimiterMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app):
-        super().__init__(app)
-        # category → ip → [timestamp, ...]
-        self._store: dict[str, dict[str, list[float]]] = defaultdict(
-            lambda: defaultdict(list)
-        )
+# Module-level store so tests can reset it without replacing the middleware instance.
+_store: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
 
+
+def reset_stores() -> None:
+    _store.clear()
+
+
+class RateLimiterMiddleware(BaseHTTPMiddleware):
     def _check(self, ip: str, category: str) -> tuple[bool, int]:
         cfg = _LIMITS[category]
         max_req, window = cfg["max_requests"], cfg["window"]
         now = time.monotonic()
         cutoff = now - window
 
-        bucket = self._store[category][ip]
+        bucket = _store[category][ip]
         recent = [t for t in bucket if t > cutoff]
 
         if len(recent) >= max_req:
             retry_after = int(recent[0] + window - now) + 1
-            self._store[category][ip] = recent
+            _store[category][ip] = recent
             return False, retry_after
 
         recent.append(now)
-        self._store[category][ip] = recent
+        _store[category][ip] = recent
         return True, 0
 
     async def dispatch(self, request: Request, call_next):

@@ -6,11 +6,17 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("GROQ_API_KEY", "test-key")
 
 from main import app  # noqa: E402
+from rate_limiter import reset_stores  # noqa: E402
 
 
 @pytest.fixture(scope="session")
 def client():
     return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def clear_rate_limiter():
+    reset_stores()
 
 
 def _make_completion(content: str):
