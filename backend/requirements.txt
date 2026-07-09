@@ -6,3 +6,5 @@ python-dotenv==1.0.1
 python-multipart==0.0.20
 pypdf==5.4.0
 translate==3.6.1
+prometheus-fastapi-instrumentator==7.0.2
+sentry-sdk==2.19.0

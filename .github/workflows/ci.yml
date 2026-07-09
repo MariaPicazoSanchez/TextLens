@@ -38,6 +38,17 @@ jobs:
           GROQ_API_KEY: ci-dummy-key
         run: pytest --tb=short -q
 
+  backend-docker:
+    name: Backend - Docker image builds
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t textlens-backend ./backend
+
   frontend:
     name: Frontend - install & build
     runs-on: ubuntu-latest

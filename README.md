@@ -68,27 +68,47 @@ TextLens is a full-stack web application that leverages the **Groq API** (Llama 
 | **Streaming client** | Fetch + `ReadableStream` + SSE line parsing |
 | **i18n** | Static dictionary (`i18n.js`) — 16 language packs, English fallback |
 
+### Operations
+
+| | |
+|---|---|
+| **Containerization** | Docker (backend + frontend) and Docker Compose for local/all-in-one runs |
+| **Deployment** | Render (backend, Docker runtime) · Vercel (frontend, static build) |
+| **Logging** | Structured JSON access logs with per-request IDs |
+| **Metrics** | Prometheus metrics at `/metrics` (`prometheus-fastapi-instrumentator`) |
+| **Error tracking** | Sentry (optional — enabled by setting `SENTRY_DSN`) |
+| **Health check** | `/health` reports the real status of the Groq dependency |
+
 ---
 
 ## Project structure
 
 ```
 TextLens/
+├── docker-compose.yml                 # Runs backend + frontend together locally
+├── render.yaml                        # Render blueprint (backend, Docker runtime)
 ├── backend/
-│   ├── main.py                        # FastAPI app, CORS, router registration
+│   ├── main.py                        # FastAPI app, middleware, router registration
+│   ├── Dockerfile
+│   ├── logging_config.py              # JSON logging setup
+│   ├── logging_middleware.py          # Per-request logging (request ID, duration)
+│   ├── rate_limiter.py                # Rate limiting, body size limit, security headers
 │   ├── requirements.txt
 │   ├── .env                           # GROQ_API_KEY (not committed)
 │   ├── .env.example
 │   ├── routes/
 │   │   ├── analyze.py                 # POST /analyze  &  POST /analyze/stream
 │   │   ├── translate.py               # POST /translate
-│   │   └── upload.py                  # POST /upload (OCR + PDF extraction)
+│   │   ├── upload.py                  # POST /upload (OCR + PDF extraction)
+│   │   └── health.py                  # GET /health
 │   └── services/
 │       ├── llm_service.py             # Groq prompts, streaming, error wrapping
 │       └── traslation_service.py      # translate library wrapper
 └── frontend/
     ├── index.html
     ├── package.json
+    ├── Dockerfile
+    ├── nginx.conf
     └── src/
         ├── App.jsx                    # Main component — all state and UI
         ├── App.css                    # Dark theme styles
@@ -157,6 +177,23 @@ npm run dev
 ```
 
 Open `http://localhost:5173` in your browser.
+
+---
+
+### Alternative: Docker Compose
+
+Runs backend and frontend together with a single command — no local Python or
+Node install required.
+
+```bash
+cp backend/.env.example backend/.env
+# Edit backend/.env and set GROQ_API_KEY
+
+docker compose up --build
+```
+
+- Backend: `http://localhost:8000`
+- Frontend: `http://localhost:5173`
 
 ---
 
@@ -234,6 +271,47 @@ Returns `{ "text": "extracted content" }`.
 | Variable | Required | Description |
 |---|---|---|
 | `GROQ_API_KEY` | Yes | API key from [console.groq.com](https://console.groq.com) |
+| `ALLOWED_ORIGINS` | No | Comma-separated allowed frontend origins. Defaults to `*` |
+| `TRUSTED_PROXIES` | No | Comma-separated IPs of trusted reverse proxies, for real client-IP extraction |
+| `LOG_LEVEL` | No | Minimum level for JSON logs (`DEBUG`/`INFO`/`WARNING`/`ERROR`). Defaults to `INFO` |
+| `ENVIRONMENT` | No | Environment name attached to logs and Sentry events. Defaults to `development` |
+| `SENTRY_DSN` | No | Enables Sentry error tracking when set. Disabled by default |
+
+---
+
+## Production readiness
+
+### Health check
+
+`GET /health` reports whether the app is up and the real status of its Groq
+dependency (based on the last successful/failed call, not an active ping that
+would burn API quota):
+
+```json
+{ "status": "ok", "groq": { "last_success_at": 1735900000.0, "last_error_at": null } }
+```
+
+### Metrics
+
+`GET /metrics` exposes request counts, latencies and error rates in Prometheus
+format (via `prometheus-fastapi-instrumentator`), ready to be scraped by
+Prometheus/Grafana.
+
+### Structured logging
+
+Every request is logged as a single JSON line (timestamp, level, method, path,
+status code, duration, and a per-request `X-Request-ID` for tracing):
+
+```json
+{"timestamp": "2026-01-01T12:00:00+00:00", "level": "INFO", "logger": "textlens.access", "message": "GET /health 200", "request_id": "...", "method": "GET", "path": "/health", "status_code": 200, "duration_ms": 1.2}
+```
+
+### Error tracking (optional)
+
+Setting `SENTRY_DSN` enables [Sentry](https://sentry.io) (free tier
+available): unhandled exceptions are automatically captured with full
+context. Leave it unset and the app runs exactly the same, with no Sentry
+dependency at runtime.
 
 ---
 

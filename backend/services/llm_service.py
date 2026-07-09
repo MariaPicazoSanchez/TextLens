@@ -1,10 +1,28 @@
 import os
 import json
+import time
 from groq import Groq, AuthenticationError, RateLimitError, APIConnectionError, APIStatusError
 from fastapi import HTTPException
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# ── Health state ───────────────────────────────────────────────────────────────
+# Updated on every Groq call so /health can report the real status of the
+# dependency without spending quota on an active ping.
+_health_state = {"last_success_at": None, "last_error_at": None}
+
+
+def get_health_status() -> dict:
+    return dict(_health_state)
+
+
+def _mark_success() -> None:
+    _health_state["last_success_at"] = time.time()
+
+
+def _mark_error() -> None:
+    _health_state["last_error_at"] = time.time()
 
 _api_key = os.environ.get("GROQ_API_KEY")
 if not _api_key:
@@ -64,14 +82,20 @@ def _wrap_errors(fn):
     """Decorator that maps Groq exceptions to HTTPException."""
     def wrapper(*args, **kwargs):
         try:
-            return fn(*args, **kwargs)
+            result = fn(*args, **kwargs)
+            _mark_success()
+            return result
         except AuthenticationError:
+            _mark_error()
             raise HTTPException(401, "Invalid or missing Groq API key. Check your .env file.")
         except RateLimitError:
+            _mark_error()
             raise HTTPException(429, "Groq rate limit reached. Wait a moment and try again.")
         except APIConnectionError:
+            _mark_error()
             raise HTTPException(503, "Could not connect to Groq API. Check your internet connection.")
         except APIStatusError as e:
+            _mark_error()
             raise HTTPException(502, f"Groq API error: {e.message}")
     return wrapper
 
@@ -153,13 +177,18 @@ def _chat_stream(prompt: str, model_key: str = DEFAULT_MODEL):
             delta = chunk.choices[0].delta.content
             if delta:
                 yield delta
+        _mark_success()
     except AuthenticationError:
+        _mark_error()
         raise HTTPException(401, "Invalid or missing Groq API key. Check your .env file.")
     except RateLimitError:
+        _mark_error()
         raise HTTPException(429, "Groq rate limit reached. Wait a moment and try again.")
     except APIConnectionError:
+        _mark_error()
         raise HTTPException(503, "Could not connect to Groq API. Check your internet connection.")
     except APIStatusError as e:
+        _mark_error()
         raise HTTPException(502, f"Groq API error: {e.message}")
 
 
@@ -222,13 +251,18 @@ def _chat_messages_stream(messages: list, model_key: str = DEFAULT_MODEL):
             delta = chunk.choices[0].delta.content
             if delta:
                 yield delta
+        _mark_success()
     except AuthenticationError:
+        _mark_error()
         raise HTTPException(401, "Invalid or missing Groq API key. Check your .env file.")
     except RateLimitError:
+        _mark_error()
         raise HTTPException(429, "Groq rate limit reached. Wait a moment and try again.")
     except APIConnectionError:
+        _mark_error()
         raise HTTPException(503, "Could not connect to Groq API. Check your internet connection.")
     except APIStatusError as e:
+        _mark_error()
         raise HTTPException(502, f"Groq API error: {e.message}")
 
 

@@ -1,12 +1,17 @@
 services:
   - type: web
     name: textlens-backend
-    runtime: python
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
     envVars:
       - key: GROQ_API_KEY
         sync: false          # set manually in Render dashboard
       - key: ALLOWED_ORIGINS
         sync: false          # e.g. https://textlens.vercel.app
+      - key: SENTRY_DSN
+        sync: false          # optional — leave unset to disable Sentry
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
