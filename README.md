@@ -251,6 +251,10 @@ On error: `data: {"error": "message"}`
 
 Maximum 500 characters. Returns `{ "translation": "string" }`.
 
+`from_lang: "auto"` (the default) detects the source language via Groq before
+translating — the underlying `translate` library has no detection of its own
+and would otherwise assume the source text is already English.
+
 ---
 
 ### `POST /upload`
